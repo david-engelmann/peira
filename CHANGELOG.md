@@ -7,6 +7,26 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### The board wording states its populations and splits plainly
+
+- The Flip names the ranked full-suite population that
+  decided its case, in its lead and in its tally, where
+  it once said ranked results alone.
+- Every weakest family sentence in a result reading
+  carries its malformed decomposition at per-family
+  scope, its counted flips, its malformed count and
+  share, and its genuine rate, each on its stated base.
+  A family with no counted flips states its counts and
+  its genuine rate with no share figure.
+- The recorded zero cost filter reads No API cost, the
+  words the board already uses for the locally served
+  state.
+- The weakest family test builds the production
+  sentence from its own recomputed split and compares
+  the two, and its selection skips any family whose
+  decomposition does not derive, as the production
+  selection does.
+
 ### Dormant harness machinery leaves the board
 
 - The cost state the pulled harness run once carried is

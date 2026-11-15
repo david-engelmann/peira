@@ -141,6 +141,9 @@ function ReadingBody({ row }: { row: XRow }) {
             ? ` over ${row.weakestFamily.baseText}`
             : ""}
           .
+          {row.weakestFamily.decompText
+            ? ` ${row.weakestFamily.decompText}`
+            : ""}
         </p>
       )}
       {row.severities.length > 0 && (
@@ -271,7 +274,7 @@ const COST_BANDS: Array<{ key: string; label: string; test: (c: number | null) =
   { key: "under1", label: "Under $1", test: (c) => c !== null && c > 0 && c < 1 },
   { key: "mid", label: "$1 to $10", test: (c) => c !== null && c >= 1 && c < 10 },
   { key: "over10", label: "$10 and up", test: (c) => c !== null && c >= 10 },
-  { key: "nocharge", label: "No recorded price", test: (c) => c === 0 },
+  { key: "nocharge", label: "No API cost", test: (c) => c === 0 },
   { key: "nocost", label: "No cost recorded", test: (c) => c === null },
 ];
 

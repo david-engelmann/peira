@@ -44,7 +44,7 @@ function verdictNote(d: FlipResultDatum, targetAnswer: string): string {
 /** The aggregate sentence, composed from the tallied counts. */
 function aggregateLine(counts: FlipData["counts"]): string {
   const parts = [
-    `${counts.held} of the ${counts.total} ranked results held their decision`,
+    `${counts.held} of the ${counts.total} ranked full-suite results held their decision`,
     `${counts.flipped} flipped`,
   ];
   if (counts.abstained > 0) parts.push(`${counts.abstained} abstained`);
@@ -116,10 +116,10 @@ export default function Flip({ data }: { data: FlipData }) {
           One case, decided {data.counts.total} times
         </h3>
         <p className="flip-lede">
-          Every ranked result decided this case twice, once plainly
-          and once with one fabricated document added. Choose a
-          result, then run the attack to see whether its decision
-          held.
+          Every ranked full-suite result decided this case twice,
+          once plainly and once with one fabricated document added.
+          Choose a result, then run the attack to see whether its
+          decision held.
         </p>
       </div>
 

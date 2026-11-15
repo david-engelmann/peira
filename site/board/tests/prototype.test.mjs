@@ -476,8 +476,12 @@ test("the rail groups state the cost truth", () => {
 test("the chart rail and the cost filter keep the cost states apart", () => {
   const explorer = read("components/Explorer.tsx");
   // The filter no longer lumps a recorded zero with no record.
+  // Its two unpriced labels name their states in the words the
+  // rail and the readings use, so a reader can tell the locally
+  // served state from the unrecorded state at a glance.
   assert.ok(!explorer.includes("c === null || c === 0"));
-  assert.ok(explorer.includes('label: "No recorded price", test: (c) => c === 0'));
+  assert.ok(explorer.includes('label: "No API cost", test: (c) => c === 0'));
+  assert.ok(!explorer.includes('label: "No recorded price"'));
   assert.ok(explorer.includes('label: "No cost recorded", test: (c) => c === null'));
   // The rail heads its groups with their own words, and the
   // harness group of the pulled run is not among them.
@@ -726,8 +730,14 @@ test("the flip object carries the case, the one control, and the verdict words",
   // The recorded decisions print verbatim, benign and attacked.
   assert.ok(flipSrc.includes("sel.benignDecision"));
   assert.ok(flipSrc.includes("sel.attackedDecision"));
-  // The aggregate line composes from the tallied counts.
-  assert.ok(flipSrc.includes("ranked results held their decision"));
+  // The aggregate line composes from the tallied counts, and
+  // both Flip sentences name the ranked full-suite population
+  // that decided the case, never the wider ranked board. The
+  // six guard results never saw this case.
+  assert.ok(flipSrc.includes("ranked full-suite results held their decision"));
+  assert.ok(!flipSrc.includes("of the ${counts.total} ranked results held"));
+  assert.ok(flipSrc.includes("Every ranked full-suite result decided this case twice,"));
+  assert.ok(!flipSrc.includes("Every ranked result decided this case twice"));
   assert.ok(flipSrc.includes("data.counts"));
   // The stepper covers the ranked full suite with marks, and
   // stepping resets to the benign state.
@@ -951,6 +961,270 @@ test("the reading states the bases its figures rest on", () => {
   const inspector = read("lib/inspectorData.ts");
   assert.ok(inspector.includes("baseText"));
   assert.ok(inspector.includes("fam.nEligible"));
+});
+
+test("the weakest family sentence carries its malformed decomposition, re-derived", () => {
+  // Recompute every result's weakest family and its split
+  // straight from the payload, with no shared code, in the
+  // family order the board derives (descending mean attack
+  // success, ties on the family key). The selection mirrors
+  // the production skip rule. A family whose records derive
+  // no decomposition cannot be named the weakest, where the
+  // derivation fails on an absent count, on malformed flips
+  // outnumbering counted flips, on an absent or zero
+  // eligible base, and on counted flips over eligible cases
+  // disagreeing with the family's printed rate.
+  const means = new Map();
+  for (const row of rows) {
+    for (const fam of familyRecords(row)) {
+      if (typeof fam.asr !== "number") continue;
+      const acc = means.get(fam.family) ?? { total: 0, n: 0 };
+      acc.total += fam.asr;
+      acc.n += 1;
+      means.set(fam.family, acc);
+    }
+  }
+  const order = [...means.entries()]
+    .map(([key, acc]) => ({ key, mean: acc.total / acc.n }))
+    .sort((a, b) => b.mean - a.mean || (a.key < b.key ? -1 : 1))
+    .map((e) => e.key);
+  assert.ok(order.length > 0);
+  // One family's decomposition under the production rule,
+  // re-derived from its own record. Null where the record
+  // derives none, and a family with no counted flips
+  // decomposes to zeros with a genuine rate over its
+  // eligible cases.
+  const deriveSplit = (fam) => {
+    if (typeof fam.asr !== "number") return null;
+    const fd =
+      fam.flip_direction &&
+      typeof fam.flip_direction === "object" &&
+      !Array.isArray(fam.flip_direction)
+        ? fam.flip_direction
+        : null;
+    const tm = fd ? fd["to-malformed"] : undefined;
+    if (!isCount(fam.n_flipped) || !isCount(tm) || tm > fam.n_flipped) {
+      return null;
+    }
+    if (!isCount(fam.n_eligible) || fam.n_eligible === 0) return null;
+    if (Math.abs(fam.n_flipped / fam.n_eligible - fam.asr) > 0.001) {
+      return null;
+    }
+    return {
+      flips: fam.n_flipped,
+      malformedFlips: tm,
+      malformedShare: fam.n_flipped === 0 ? 0 : tm / fam.n_flipped,
+      genuineRate: (fam.n_flipped - tm) / fam.n_eligible,
+    };
+  };
+  const selectWeakest = (byKey) => {
+    let weakest = null;
+    let split = null;
+    for (const key of order) {
+      const fam = byKey.get(key);
+      if (!fam) continue;
+      const s = deriveSplit(fam);
+      if (s === null) continue;
+      if (weakest === null || fam.asr > weakest.asr) {
+        weakest = fam;
+        split = s;
+      }
+    }
+    return { weakest, split };
+  };
+  // The board's percent and integer forms, ported from
+  // lib/format with no shared code. A percent is the
+  // value's decimal string scaled by 100 and rounded half
+  // up at one decimal. An integer groups by thousands.
+  const expandDec = (value) => {
+    const s = String(value);
+    if (!/[eE]/.test(s)) return s;
+    const [mantissa, expStr] = s.split(/[eE]/);
+    const exp = parseInt(expStr, 10);
+    const negative = mantissa.startsWith("-");
+    const body = negative ? mantissa.slice(1) : mantissa;
+    const [intPart, fracPart = ""] = body.split(".");
+    const digits = intPart + fracPart;
+    const point = intPart.length + exp;
+    let out;
+    if (point <= 0) out = "0." + "0".repeat(-point) + digits;
+    else if (point >= digits.length) out = digits + "0".repeat(point - digits.length);
+    else out = digits.slice(0, point) + "." + digits.slice(point);
+    return (negative ? "-" : "") + out;
+  };
+  const shiftDec = (decStr, places) => {
+    const negative = decStr.startsWith("-");
+    const body = negative ? decStr.slice(1) : decStr;
+    const [intPart, fracPart = ""] = body.split(".");
+    let digits = intPart + fracPart;
+    let point = intPart.length + places;
+    let lead = 0;
+    while (lead < digits.length - 1 && digits[lead] === "0") lead += 1;
+    digits = digits.slice(lead);
+    point -= lead;
+    let out;
+    if (point <= 0) out = "0." + "0".repeat(-point) + digits;
+    else if (point >= digits.length) out = digits + "0".repeat(point - digits.length);
+    else out = digits.slice(0, point) + "." + digits.slice(point);
+    return (negative ? "-" : "") + out;
+  };
+  const quantizeHU = (decStr, decimals) => {
+    const negative = decStr.startsWith("-");
+    const body = negative ? decStr.slice(1) : decStr;
+    const [rawInt, fracPart = ""] = body.split(".");
+    const intPart = rawInt.replace(/^0+(?=\d)/, "");
+    const kept = fracPart.slice(0, decimals).padEnd(decimals, "0");
+    const dropped = fracPart.slice(decimals);
+    const digits = (intPart + kept).split("").map(Number);
+    if (dropped.length > 0 && dropped[0] >= "5") {
+      let i = digits.length - 1;
+      while (i >= 0 && digits[i] === 9) {
+        digits[i] = 0;
+        i -= 1;
+      }
+      if (i < 0) digits.unshift(1);
+      else digits[i] += 1;
+    }
+    const joined = digits.join("");
+    const intOut = joined.slice(0, joined.length - decimals) || "0";
+    const fracOut = decimals > 0 ? joined.slice(joined.length - decimals) : "";
+    return (negative ? "-" : "") + intOut + (decimals > 0 ? `.${fracOut}` : "");
+  };
+  const fmtPctT = (v) => `${quantizeHU(shiftDec(expandDec(v), 2), 1)}%`;
+  const fmtIntT = (v) => v.toLocaleString("en-US");
+  // The production construction itself, lifted from the
+  // inspector source and run against each recomputed
+  // split, so the sentence the derivation builds is the
+  // sentence under test rather than a restatement of its
+  // shape. A field read at the wrong place in the
+  // construction changes the built sentence and fails
+  // the equality below.
+  const inspector = read("lib/inspectorData.ts");
+  const weakestAt = inspector.indexOf("weakest = {");
+  assert.ok(weakestAt >= 0, "the inspector builds a weakest family");
+  const decompAt = inspector.indexOf("decompText:", weakestAt);
+  assert.ok(decompAt > weakestAt, "the weakest family carries a decomposition");
+  const decompEnd = inspector.indexOf("\n      };", decompAt);
+  assert.ok(decompEnd > decompAt, "the weakest family object closes");
+  const decompExpr = inspector
+    .slice(decompAt + "decompText:".length, decompEnd)
+    .trim()
+    .replace(/,$/, "");
+  const produceDecomp = new Function(
+    "famSplit",
+    "fmtInt",
+    "fmtPct",
+    `"use strict"; return (${decompExpr});`,
+  );
+  // The sentence this test builds on its own, from its own
+  // recomputed split, in the board's forms. The two
+  // sentences agree figure for figure or the test fails.
+  // A family with no counted flips states its counts and
+  // its genuine rate with no share figure, there being no
+  // counted flips base for a share to rest on.
+  const sentenceFor = (s) =>
+    s.flips === 0
+      ? `Of its ${fmtIntT(s.flips)} counted flips, ${fmtIntT(s.malformedFlips)} went to malformed output, and its genuine flips are ${fmtPctT(s.genuineRate)} of its eligible cases.`
+      : `Of its ${fmtIntT(s.flips)} counted flips, ${fmtIntT(s.malformedFlips)} went to malformed output, ${fmtPctT(s.malformedShare)} of its counted flips, and its genuine flips are ${fmtPctT(s.genuineRate)} of its eligible cases.`;
+  let checked = 0;
+  let emptyBase = null;
+  for (const row of rows) {
+    const byKey = new Map(familyRecords(row).map((f) => [f.family, f]));
+    const { weakest, split } = selectWeakest(byKey);
+    assert.ok(weakest !== null, `${row.run_id} has a weakest family`);
+    assert.ok(split !== null, `${row.run_id} weakest family derives`);
+    // The family's counted flips and its malformed split,
+    // re-derived from its own record.
+    assert.ok(isCount(weakest.n_flipped), `${row.run_id} weakest family flips`);
+    const fd =
+      weakest.flip_direction && typeof weakest.flip_direction === "object"
+        ? weakest.flip_direction
+        : {};
+    const malformed = fd["to-malformed"];
+    assert.ok(isCount(malformed), `${row.run_id} weakest family malformed`);
+    assert.ok(malformed <= weakest.n_flipped);
+    assert.ok(isCount(weakest.n_eligible) && weakest.n_eligible > 0);
+    // The printed family rate is its counted flips over its
+    // eligible cases, so the decomposition rests on the same
+    // figures the rate does.
+    assert.ok(
+      Math.abs(weakest.n_flipped / weakest.n_eligible - weakest.asr) <= 0.001,
+      `${row.run_id} weakest family rate re-derives`,
+    );
+    const share =
+      weakest.n_flipped === 0 ? 0 : malformed / weakest.n_flipped;
+    assert.ok(share >= 0 && share <= 1);
+    const genuine = (weakest.n_flipped - malformed) / weakest.n_eligible;
+    assert.ok(genuine >= 0 && genuine <= 1);
+    // The selection's split is the same split read straight
+    // off the record here, figure for figure.
+    assert.equal(split.flips, weakest.n_flipped);
+    assert.equal(split.malformedFlips, malformed);
+    assert.ok(Math.abs(split.malformedShare - share) < 1e-12);
+    assert.ok(Math.abs(split.genuineRate - genuine) < 1e-12);
+    // The sentence the production construction builds from
+    // its split equals the sentence built here from the
+    // recomputed split, counted flips, malformed count,
+    // malformed share and genuine rate alike.
+    assert.equal(
+      produceDecomp(split, fmtIntT, fmtPctT),
+      sentenceFor(split),
+      `${row.run_id} weakest family sentence`,
+    );
+    if (split.flips === 0) {
+      assert.equal(split.malformedShare, 0);
+      assert.ok(emptyBase === null, "a second reading rests on an empty base");
+      emptyBase = row.display_name;
+    }
+    checked += 1;
+  }
+  assert.equal(checked, rows.length);
+  // Exactly one reading on the standing payload carries a
+  // weakest family with no counted flips, the granite
+  // guard, and its sentence states its counts with no
+  // share figure.
+  assert.equal(emptyBase, "ibm-granite/granite-guardian-hap-125m");
+  // Mercury's weakest family is the strict case the law
+  // names. Its split re-derives as overwhelmingly malformed,
+  // which is why its rate may not stand alone.
+  const mercury = flagged.reduce((a, b) =>
+    b.asr_conditional > a.asr_conditional ? b : a,
+  );
+  const mercuryFams = new Map(
+    familyRecords(mercury).map((f) => [f.family, f]),
+  );
+  const { weakest: mercuryWeakest, split: mercurySplit } =
+    selectWeakest(mercuryFams);
+  const mercuryMalformed = mercuryWeakest.flip_direction["to-malformed"];
+  assert.ok(
+    mercuryMalformed / mercuryWeakest.n_flipped > 0.9,
+    "mercury weakest family flips are mostly malformed",
+  );
+  // Mercury's built sentence stands in its exact printed
+  // form, the anchor the formatting ports and the lifted
+  // construction are both checked against.
+  assert.equal(
+    produceDecomp(mercurySplit, fmtIntT, fmtPctT),
+    "Of its 296 counted flips, 275 went to malformed output, 92.9% of its counted flips, and its genuine flips are 6.6% of its eligible cases.",
+  );
+  // The derivation and the rendering carry the split for
+  // every result, not only the flagged ones, in the
+  // whole-row phrasing with both bases stated in words.
+  assert.ok(inspector.includes("const famDecomp = familyFlipDecomposition(row);"));
+  assert.ok(
+    !inspector.includes('kind === "flagged" ? familyFlipDecomposition(row) : null'),
+  );
+  assert.ok(inspector.includes("eligible cases"));
+  assert.ok(inspector.includes("counted flips,"));
+  assert.ok(inspector.includes("went to malformed output,"));
+  assert.ok(inspector.includes("of its counted flips, and its genuine flips are"));
+  assert.ok(inspector.includes("of its eligible cases."));
+  assert.ok(inspector.includes("famSplit.flips === 0"));
+  assert.ok(
+    inspector.includes("went to malformed output, and its genuine flips are"),
+  );
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(explorer.includes("row.weakestFamily.decompText"));
 });
 
 test("the families mode prints full names against a labelled scale", () => {
