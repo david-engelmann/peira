@@ -2011,7 +2011,7 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
               </div>
               <div className="xfam-bars">
                 {row.families.map((fam) => (
-                  <div className="xfam-bar" key={fam.key} title={`${fam.full} ${fam.asr !== null ? fmtPct(fam.asr) : "not measured"}`}>
+                  <div className="xfam-bar" key={fam.key} title={`${fam.full} ${fam.asr !== null ? fmtPct(fam.asr) : "not measured"}${fam.decompText ? `. ${fam.decompText}` : ""}`}>
                     <span className="xfam-label">{fam.full}</span>
                     <span className="xfam-track">
                       {fam.asr !== null && (
@@ -2024,6 +2024,9 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
                     <span className="xfam-val rn">
                       {fam.asr !== null ? fmtPct(fam.asr) : "Not measured"}
                     </span>
+                    {fam.decompText && (
+                      <p className="xfam-decomp">{fam.decompText}</p>
+                    )}
                   </div>
                 ))}
               </div>

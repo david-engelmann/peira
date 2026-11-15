@@ -9,6 +9,7 @@
 
 import {
   boardGroups,
+  familyFlipDecomposition,
   flipDecomposition,
   splitDisplayName,
   type BoardRow,
@@ -24,13 +25,26 @@ import {
   FAMILY_SHORT,
 } from "@/lib/charts";
 import { provenanceOf, runDateWords, severitiesOf } from "@/lib/cards";
-import { inspectorDataAll, type InspectorDatum } from "@/lib/inspectorData";
+import {
+  familyDecompText,
+  inspectorDataAll,
+  type InspectorDatum,
+} from "@/lib/inspectorData";
 
 export interface XFamily {
   key: string;
   short: string;
   full: string;
   asr: number | null;
+  /**
+   * The family's decomposition sentence, in the words the
+   * weakest family sentence uses, built by the inspector
+   * layer's one per-family construction. Null where the
+   * family's records derive no decomposition. The families
+   * view prints no family rate without this sentence
+   * standing under its bar (C-5, per-family scope).
+   */
+  decompText: string | null;
 }
 
 export interface XRow {
@@ -149,6 +163,7 @@ function shapeRow(
   rankedAxisMax: number,
 ): XRow {
   const fams = familiesOf(row);
+  const famDecomp = familyFlipDecomposition(row);
   const decomp = flipDecomposition(row);
   const cal = calibrationOf(row);
   const prov = provenanceOf(row);
@@ -205,12 +220,17 @@ function shapeRow(
             malformedShare: decomp.malformedShare,
             genuineRate: decomp.genuineRate,
           },
-    families: famOrder.map((key) => ({
-      key,
-      short: FAMILY_SHORT[key] ?? familyFullName(key),
-      full: familyFullName(key),
-      asr: fams.get(key)?.asr ?? null,
-    })),
+    families: famOrder.map((key) => {
+      const famSplit = famDecomp.get(key) ?? null;
+      return {
+        key,
+        short: FAMILY_SHORT[key] ?? familyFullName(key),
+        full: familyFullName(key),
+        asr: fams.get(key)?.asr ?? null,
+        decompText:
+          famSplit !== null ? familyDecompText(famSplit) : null,
+      };
+    }),
     weakestFamily: datum.weakestFamily,
     severities: severitiesOf(row).map((s) => ({
       label: s.label,
