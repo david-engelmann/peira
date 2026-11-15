@@ -10,7 +10,7 @@
  */
 
 import type { BoardRow } from "@/lib/payload";
-import { isHarnessRow, isSliceRow, fullCaseCount } from "@/lib/payload";
+import { isSliceRow, fullCaseCount } from "@/lib/payload";
 import { fmtPctCell } from "@/lib/format";
 
 /* ---------------- typed detail access ---------------- */
@@ -221,9 +221,9 @@ export function costIsLowerBound(row: BoardRow): boolean {
 /** The cost state of a rail row, in the words the chart uses. */
 export function railCostState(
   row: BoardRow,
-): "harness" | "recorded-zero" | "unrecorded" {
+): "recorded-zero" | "unrecorded" {
   if (row.total_cost_usd === null) return "unrecorded";
-  return isHarnessRow(row) ? "harness" : "recorded-zero";
+  return "recorded-zero";
 }
 
 /**

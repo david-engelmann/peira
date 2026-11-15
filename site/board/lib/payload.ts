@@ -449,26 +449,6 @@ export function wireWords(wire: string): string {
 }
 
 /**
- * Adapters that measure a model through an agent harness on a
- * paid plan rather than through a priced API. A harness run's
- * cost is real, billed through the plan that carries the
- * harness, and not metered per run. That is a different fact
- * from a run served locally at no API cost, and from a run a
- * provider priced at zero, and the cost surfaces keep the
- * three apart. Keyed by the payload's recorded adapter name,
- * so a future harness adapter earns its place here rather
- * than at a render site.
- */
-export const HARNESS_ADAPTERS: ReadonlySet<string> = new Set([
-  "cursor-harness",
-]);
-
-/** Whether the run was measured through an agent harness. */
-export function isHarnessRow(row: BoardRow): boolean {
-  return HARNESS_ADAPTERS.has(row.adapter_name);
-}
-
-/**
  * The stable address slug for a result's own page. The short
  * name, slugified, with the wire appended when another result
  * shares the short name, so gpt-6-luna's two wires get two

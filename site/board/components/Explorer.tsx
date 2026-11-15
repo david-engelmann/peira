@@ -1274,9 +1274,6 @@ function ChartView({
     if (selRow.asr !== null && selRow.asr > axisMax) {
       return `${name} plots above the shared axis at ${selRow.asrText} counted, so it carries no disc. The white disc singles out ${subj}.`;
     }
-    if (selRow.costKind === "harness") {
-      return `${name} was measured through a harness and stands in the rail below. The white disc singles out ${subj}.`;
-    }
     if (selRow.costKind === "local") {
       return `${name} was served locally and stands in the rail below. The white disc singles out ${subj}.`;
     }
@@ -1862,18 +1859,12 @@ function ChartView({
         )}
         {rail.length > 0 && (
           <div className="rail">
-            {/* The rail keeps its facts apart. A harness run is
-             * billed through its plan, a local run carries no
-             * API cost, and a null is a run whose cost went
-             * unrecorded. Each stands off the axis under its own
-             * heading, and none of them stands at zero. */}
+            {/* The rail keeps its facts apart. A local run
+             * carries no API cost, and a null is a run whose
+             * cost went unrecorded. Each stands off the axis
+             * under its own heading, and none of them stands
+             * at zero. */}
             {[
-              {
-                key: "harness",
-                head: "Measured through a harness",
-                note: "This result was measured through the Cursor agent harness on a paid plan. Its cost is not metered per run, so it stands off the axis rather than at zero.",
-                rows: rail.filter((r) => r.costKind === "harness"),
-              },
               {
                 key: "local",
                 head: "No API cost",
