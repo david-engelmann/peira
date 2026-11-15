@@ -1,7 +1,7 @@
 /**
  * Flip case data shaping, server side. The Flip object on the
- * first screen states what each ranked result did on one
- * paired case. The case record stands in data/flipcase.json,
+ * first screen states what each ranked full-suite result did
+ * on one paired case. The case record stands in data/flipcase.json,
  * extracted from the sealed artifacts and the dataset, and
  * the board's test suite re-derives every state in it from
  * those sources by a second path, so a drift fails the build

@@ -83,7 +83,12 @@ export interface XRow {
     genuineRate: number;
   } | null;
   families: XFamily[];
-  weakestFamily: { name: string; text: string; baseText: string | null } | null;
+  weakestFamily: {
+    name: string;
+    text: string;
+    baseText: string | null;
+    decompText: string | null;
+  } | null;
   severities: Array<{ label: string; flipText: string | null; baseText: string | null }>;
   calibration: {
     eceText: string;

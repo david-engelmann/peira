@@ -476,8 +476,12 @@ test("the rail groups state the cost truth", () => {
 test("the chart rail and the cost filter keep the cost states apart", () => {
   const explorer = read("components/Explorer.tsx");
   // The filter no longer lumps a recorded zero with no record.
+  // Its two unpriced labels name their states in the words the
+  // rail and the readings use, so a reader can tell the locally
+  // served state from the unrecorded state at a glance.
   assert.ok(!explorer.includes("c === null || c === 0"));
-  assert.ok(explorer.includes('label: "No recorded price", test: (c) => c === 0'));
+  assert.ok(explorer.includes('label: "No API cost", test: (c) => c === 0'));
+  assert.ok(!explorer.includes('label: "No recorded price"'));
   assert.ok(explorer.includes('label: "No cost recorded", test: (c) => c === null'));
   // The rail heads its groups with their own words, and the
   // harness group of the pulled run is not among them.
@@ -726,8 +730,14 @@ test("the flip object carries the case, the one control, and the verdict words",
   // The recorded decisions print verbatim, benign and attacked.
   assert.ok(flipSrc.includes("sel.benignDecision"));
   assert.ok(flipSrc.includes("sel.attackedDecision"));
-  // The aggregate line composes from the tallied counts.
-  assert.ok(flipSrc.includes("ranked results held their decision"));
+  // The aggregate line composes from the tallied counts, and
+  // both Flip sentences name the ranked full-suite population
+  // that decided the case, never the wider ranked board. The
+  // six guard results never saw this case.
+  assert.ok(flipSrc.includes("ranked full-suite results held their decision"));
+  assert.ok(!flipSrc.includes("of the ${counts.total} ranked results held"));
+  assert.ok(flipSrc.includes("Every ranked full-suite result decided this case twice,"));
+  assert.ok(!flipSrc.includes("Every ranked result decided this case twice"));
   assert.ok(flipSrc.includes("data.counts"));
   // The stepper covers the ranked full suite with marks, and
   // stepping resets to the benign state.
@@ -951,6 +961,101 @@ test("the reading states the bases its figures rest on", () => {
   const inspector = read("lib/inspectorData.ts");
   assert.ok(inspector.includes("baseText"));
   assert.ok(inspector.includes("fam.nEligible"));
+});
+
+test("the weakest family sentence carries its malformed decomposition, re-derived", () => {
+  // Recompute every result's weakest family and its split
+  // straight from the payload, with no shared code, in the
+  // family order the board derives (descending mean attack
+  // success, ties on the family key).
+  const means = new Map();
+  for (const row of rows) {
+    for (const fam of familyRecords(row)) {
+      if (typeof fam.asr !== "number") continue;
+      const acc = means.get(fam.family) ?? { total: 0, n: 0 };
+      acc.total += fam.asr;
+      acc.n += 1;
+      means.set(fam.family, acc);
+    }
+  }
+  const order = [...means.entries()]
+    .map(([key, acc]) => ({ key, mean: acc.total / acc.n }))
+    .sort((a, b) => b.mean - a.mean || (a.key < b.key ? -1 : 1))
+    .map((e) => e.key);
+  assert.ok(order.length > 0);
+  let checked = 0;
+  for (const row of rows) {
+    const byKey = new Map(familyRecords(row).map((f) => [f.family, f]));
+    let weakest = null;
+    for (const key of order) {
+      const fam = byKey.get(key);
+      if (!fam || typeof fam.asr !== "number") continue;
+      if (weakest === null || fam.asr > weakest.asr) weakest = fam;
+    }
+    assert.ok(weakest !== null, `${row.run_id} has a weakest family`);
+    // The family's counted flips and its malformed split,
+    // re-derived from its own record.
+    assert.ok(isCount(weakest.n_flipped), `${row.run_id} weakest family flips`);
+    const fd =
+      weakest.flip_direction && typeof weakest.flip_direction === "object"
+        ? weakest.flip_direction
+        : {};
+    const malformed = fd["to-malformed"];
+    assert.ok(isCount(malformed), `${row.run_id} weakest family malformed`);
+    assert.ok(malformed <= weakest.n_flipped);
+    assert.ok(isCount(weakest.n_eligible) && weakest.n_eligible > 0);
+    // The printed family rate is its counted flips over its
+    // eligible cases, so the decomposition rests on the same
+    // figures the rate does.
+    assert.ok(
+      Math.abs(weakest.n_flipped / weakest.n_eligible - weakest.asr) <= 0.001,
+      `${row.run_id} weakest family rate re-derives`,
+    );
+    const share =
+      weakest.n_flipped === 0 ? 0 : malformed / weakest.n_flipped;
+    assert.ok(share >= 0 && share <= 1);
+    const genuine = (weakest.n_flipped - malformed) / weakest.n_eligible;
+    assert.ok(genuine >= 0 && genuine <= 1);
+    checked += 1;
+  }
+  assert.equal(checked, rows.length);
+  // Mercury's weakest family is the strict case the law
+  // names. Its split re-derives as overwhelmingly malformed,
+  // which is why its rate may not stand alone.
+  const mercury = flagged.reduce((a, b) =>
+    b.asr_conditional > a.asr_conditional ? b : a,
+  );
+  const mercuryFams = new Map(
+    familyRecords(mercury).map((f) => [f.family, f]),
+  );
+  let mercuryWeakest = null;
+  for (const key of order) {
+    const fam = mercuryFams.get(key);
+    if (!fam || typeof fam.asr !== "number") continue;
+    if (mercuryWeakest === null || fam.asr > mercuryWeakest.asr) {
+      mercuryWeakest = fam;
+    }
+  }
+  const mercuryMalformed = mercuryWeakest.flip_direction["to-malformed"];
+  assert.ok(
+    mercuryMalformed / mercuryWeakest.n_flipped > 0.9,
+    "mercury weakest family flips are mostly malformed",
+  );
+  // The derivation and the rendering carry the split for
+  // every result, not only the flagged ones, in the
+  // whole-row phrasing with both bases stated in words.
+  const inspector = read("lib/inspectorData.ts");
+  assert.ok(inspector.includes("const famDecomp = familyFlipDecomposition(row);"));
+  assert.ok(
+    !inspector.includes('kind === "flagged" ? familyFlipDecomposition(row) : null'),
+  );
+  assert.ok(inspector.includes("eligible cases"));
+  assert.ok(inspector.includes("counted flips,"));
+  assert.ok(inspector.includes("went to malformed output,"));
+  assert.ok(inspector.includes("of its counted flips, and its genuine flips are"));
+  assert.ok(inspector.includes("of its eligible cases."));
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(explorer.includes("row.weakestFamily.decompText"));
 });
 
 test("the families mode prints full names against a labelled scale", () => {

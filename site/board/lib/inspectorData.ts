@@ -105,11 +105,17 @@ export interface InspectorDatum {
   unanswered: string | null;
   singleCall: string | null;
   /**
-   * The weakest measured family, named with its rate. Null
-   * when no family figure may print: no measured family, or
-   * a flagged family whose decomposition does not derive.
+   * The weakest measured family, named with its rate and
+   * its malformed decomposition. Null when no family figure
+   * may print, no measured family, or a family whose
+   * decomposition does not derive.
    */
-  weakestFamily: { name: string; text: string; baseText: string | null } | null;
+  weakestFamily: {
+    name: string;
+    text: string;
+    baseText: string | null;
+    decompText: string | null;
+  } | null;
   /** The result's own page. */
   href: string;
 }
@@ -173,20 +179,29 @@ export function inspectorDatum(
         ? "served locally, no API cost"
         : null;
   /* The weakest family, from the run's own family records.
-   * A flagged result's family figures travel with their own
-   * decompositions (C-5): a family whose records derive none
-   * prints no figure here either, and cannot be named the
-   * weakest. */
+   * A result's family figures travel with their own
+   * decompositions (C-5, per-family scope): a family whose
+   * records derive none prints no figure here either, and
+   * cannot be named the weakest. The decomposition states
+   * the family's counted flips and how many of them went to
+   * malformed output, with the malformed share stated on
+   * its counted flips base and the genuine rate stated on
+   * its eligible cases base, in the whole-row phrasing the
+   * share card and the flagged reading already use. */
   const fams = familiesOf(row);
-  const famDecomp =
-    kind === "flagged" ? familyFlipDecomposition(row) : null;
-  let weakest: { name: string; text: string; baseText: string | null } | null =
-    null;
+  const famDecomp = familyFlipDecomposition(row);
+  let weakest: {
+    name: string;
+    text: string;
+    baseText: string | null;
+    decompText: string | null;
+  } | null = null;
   let worst = -1;
   for (const key of familyOrder(allRows)) {
     const fam = fams.get(key);
     if (!fam || fam.asr === null) continue;
-    if (famDecomp !== null && (famDecomp.get(key) ?? null) === null) continue;
+    const famSplit = famDecomp.get(key) ?? null;
+    if (famSplit === null) continue;
     if (fam.asr > worst) {
       worst = fam.asr;
       weakest = {
@@ -196,7 +211,10 @@ export function inspectorDatum(
          * so the rate's denominator travels with it and the
          * reading can state the base it rests on. */
         baseText:
-          fam.nEligible !== null ? `${fmtInt(fam.nEligible)} eligible` : null,
+          fam.nEligible !== null
+            ? `${fmtInt(fam.nEligible)} eligible cases`
+            : null,
+        decompText: `Of its ${fmtInt(famSplit.flips)} counted flips, ${fmtInt(famSplit.malformedFlips)} went to malformed output, ${fmtPct(famSplit.malformedShare)} of its counted flips, and its genuine flips are ${fmtPct(famSplit.genuineRate)} of its eligible cases.`,
       };
     }
   }
