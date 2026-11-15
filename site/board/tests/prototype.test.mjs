@@ -379,7 +379,7 @@ test("the flagged reading states both decomposition bases", () => {
   assert.ok(!inspector.includes("genuine flip rate ${"));
 });
 
-test("recorded zero splits by how the run was measured", () => {
+test("the recorded zero payload census by adapter", () => {
   const zeroes = rows.filter((r) => r.total_cost_usd === 0);
   assert.equal(zeroes.length, 6);
   // No recorded zero is a harness run. The one harness run

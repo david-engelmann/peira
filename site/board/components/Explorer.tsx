@@ -215,8 +215,8 @@ function CompareReading({
       sel.costText,
       pin.costText,
       /* A dollar difference exists only between two prices. A
-       * run billed through a plan and a run with no recorded
-       * cost are not zero priced, so neither side may enter a
+       * run served locally and a run with no recorded cost are
+       * not zero priced, so neither side may enter a
        * subtraction that would print one. */
       sel.costValue !== null &&
         pin.costValue !== null &&
