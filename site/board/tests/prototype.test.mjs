@@ -1242,6 +1242,7 @@ test("the families view carries every family's malformed decomposition, re-deriv
   // the family's printed rate. A family with no counted
   // flips decomposes to zeros with a genuine rate over its
   // eligible cases.
+  // This port is stricter than production where a family's rate is absent, failing toward a red suite on purpose.
   const deriveSplit = (fam) => {
     if (typeof fam.asr !== "number") return null;
     const fd =
@@ -1387,6 +1388,47 @@ test("the families view carries every family's malformed decomposition, re-deriv
   // counted flips, the guard families among them, and
   // their sentences state counts with no share figure.
   assert.equal(emptyBase, 60);
+  // The view's join, modelled. The bar's rate is keyed by
+  // the payload object's key, as familiesOf in lib/charts
+  // keys it, while the decomposition map is keyed by the
+  // record's own family field, as familyFlipDecomposition
+  // in lib/payload keys it, and the explorer data layer
+  // looks the split up by the object key. The two keyings
+  // meet only while every record's family field names the
+  // key it sits under, so assert exactly that for every
+  // entry of every result, with the key enumeration and
+  // the record enumeration counting the same. A record
+  // whose family field drifted from its key would derive
+  // cleanly above and still print its rate with no
+  // sentence under its bar, silently.
+  let joined = 0;
+  for (const row of rows) {
+    const raw = detailOf(row).families;
+    const entries =
+      raw && typeof raw === "object" && !Array.isArray(raw)
+        ? Object.entries(raw)
+        : [];
+    const records = familyRecords(row);
+    assert.equal(
+      entries.length,
+      records.length,
+      `${row.run_id} family keys and records count the same`,
+    );
+    const recordSet = new Set(records);
+    for (const [key, record] of entries) {
+      assert.ok(
+        recordSet.has(record),
+        `${row.run_id} ${key} key carries its family record`,
+      );
+      assert.equal(
+        record.family,
+        key,
+        `${row.run_id} ${key} record names the key it sits under`,
+      );
+      joined += 1;
+    }
+  }
+  assert.equal(joined, 537);
   // Mercury's eleven families, figure for figure. Its
   // counted flips are mostly malformed output, which is
   // why none of its family rates may stand alone.
