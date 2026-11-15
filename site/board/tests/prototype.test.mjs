@@ -1100,16 +1100,21 @@ test("the weakest family sentence carries its malformed decomposition, re-derive
   // construction changes the built sentence and fails
   // the equality below.
   const inspector = read("lib/inspectorData.ts");
-  const weakestAt = inspector.indexOf("weakest = {");
-  assert.ok(weakestAt >= 0, "the inspector builds a weakest family");
-  const decompAt = inspector.indexOf("decompText:", weakestAt);
-  assert.ok(decompAt > weakestAt, "the weakest family carries a decomposition");
-  const decompEnd = inspector.indexOf("\n      };", decompAt);
-  assert.ok(decompEnd > decompAt, "the weakest family object closes");
-  const decompExpr = inspector
-    .slice(decompAt + "decompText:".length, decompEnd)
-    .trim()
-    .replace(/,$/, "");
+  // The construction stands in one exported helper, the
+  // sentence every per-family surface shares, and the
+  // weakest family object is built by it. The helper's
+  // return expression is what runs below.
+  assert.ok(
+    inspector.includes("decompText: familyDecompText(famSplit)"),
+    "the weakest family is built by the shared construction",
+  );
+  const helperAt = inspector.indexOf("export function familyDecompText(");
+  assert.ok(helperAt >= 0, "the inspector exports the shared construction");
+  const returnAt = inspector.indexOf("return ", helperAt);
+  assert.ok(returnAt > helperAt, "the construction returns its sentence");
+  const returnEnd = inspector.indexOf(";", returnAt);
+  assert.ok(returnEnd > returnAt, "the construction's return closes");
+  const decompExpr = inspector.slice(returnAt + "return ".length, returnEnd);
   const produceDecomp = new Function(
     "famSplit",
     "fmtInt",
@@ -1225,6 +1230,278 @@ test("the weakest family sentence carries its malformed decomposition, re-derive
   );
   const explorer = read("components/Explorer.tsx");
   assert.ok(explorer.includes("row.weakestFamily.decompText"));
+});
+
+test("the families view carries every family's malformed decomposition, re-derived", () => {
+  // Recompute every family's split for every result
+  // straight from the payload, with no shared code, under
+  // the production rule. A family derives no decomposition
+  // on an absent count, on malformed flips outnumbering
+  // counted flips, on an absent or zero eligible base, and
+  // on counted flips over eligible cases disagreeing with
+  // the family's printed rate. A family with no counted
+  // flips decomposes to zeros with a genuine rate over its
+  // eligible cases.
+  // This port is stricter than production where a family's rate is absent, failing toward a red suite on purpose.
+  const deriveSplit = (fam) => {
+    if (typeof fam.asr !== "number") return null;
+    const fd =
+      fam.flip_direction &&
+      typeof fam.flip_direction === "object" &&
+      !Array.isArray(fam.flip_direction)
+        ? fam.flip_direction
+        : null;
+    const tm = fd ? fd["to-malformed"] : undefined;
+    if (!isCount(fam.n_flipped) || !isCount(tm) || tm > fam.n_flipped) {
+      return null;
+    }
+    if (!isCount(fam.n_eligible) || fam.n_eligible === 0) return null;
+    if (Math.abs(fam.n_flipped / fam.n_eligible - fam.asr) > 0.001) {
+      return null;
+    }
+    return {
+      flips: fam.n_flipped,
+      malformedFlips: tm,
+      malformedShare: fam.n_flipped === 0 ? 0 : tm / fam.n_flipped,
+      genuineRate: (fam.n_flipped - tm) / fam.n_eligible,
+    };
+  };
+  // The board's percent and integer forms, ported from
+  // lib/format with no shared code, as the weakest family
+  // test ports them. A percent is the value's decimal
+  // string scaled by 100 and rounded half up at one
+  // decimal. An integer groups by thousands.
+  const expandDec = (value) => {
+    const s = String(value);
+    if (!/[eE]/.test(s)) return s;
+    const [mantissa, expStr] = s.split(/[eE]/);
+    const exp = parseInt(expStr, 10);
+    const negative = mantissa.startsWith("-");
+    const body = negative ? mantissa.slice(1) : mantissa;
+    const [intPart, fracPart = ""] = body.split(".");
+    const digits = intPart + fracPart;
+    const point = intPart.length + exp;
+    let out;
+    if (point <= 0) out = "0." + "0".repeat(-point) + digits;
+    else if (point >= digits.length) out = digits + "0".repeat(point - digits.length);
+    else out = digits.slice(0, point) + "." + digits.slice(point);
+    return (negative ? "-" : "") + out;
+  };
+  const shiftDec = (decStr, places) => {
+    const negative = decStr.startsWith("-");
+    const body = negative ? decStr.slice(1) : decStr;
+    const [intPart, fracPart = ""] = body.split(".");
+    let digits = intPart + fracPart;
+    let point = intPart.length + places;
+    let lead = 0;
+    while (lead < digits.length - 1 && digits[lead] === "0") lead += 1;
+    digits = digits.slice(lead);
+    point -= lead;
+    let out;
+    if (point <= 0) out = "0." + "0".repeat(-point) + digits;
+    else if (point >= digits.length) out = digits + "0".repeat(point - digits.length);
+    else out = digits.slice(0, point) + "." + digits.slice(point);
+    return (negative ? "-" : "") + out;
+  };
+  const quantizeHU = (decStr, decimals) => {
+    const negative = decStr.startsWith("-");
+    const body = negative ? decStr.slice(1) : decStr;
+    const [rawInt, fracPart = ""] = body.split(".");
+    const intPart = rawInt.replace(/^0+(?=\d)/, "");
+    const kept = fracPart.slice(0, decimals).padEnd(decimals, "0");
+    const dropped = fracPart.slice(decimals);
+    const digits = (intPart + kept).split("").map(Number);
+    if (dropped.length > 0 && dropped[0] >= "5") {
+      let i = digits.length - 1;
+      while (i >= 0 && digits[i] === 9) {
+        digits[i] = 0;
+        i -= 1;
+      }
+      if (i < 0) digits.unshift(1);
+      else digits[i] += 1;
+    }
+    const joined = digits.join("");
+    const intOut = joined.slice(0, joined.length - decimals) || "0";
+    const fracOut = decimals > 0 ? joined.slice(joined.length - decimals) : "";
+    return (negative ? "-" : "") + intOut + (decimals > 0 ? `.${fracOut}` : "");
+  };
+  const fmtPctT = (v) => `${quantizeHU(shiftDec(expandDec(v), 2), 1)}%`;
+  const fmtIntT = (v) => v.toLocaleString("en-US");
+  // The production construction itself, lifted from the
+  // inspector source and run against each recomputed
+  // split, as the weakest family test lifts it. A field
+  // read at the wrong place in the construction changes
+  // the built sentence and fails the equality below.
+  const inspector = read("lib/inspectorData.ts");
+  assert.ok(
+    inspector.includes("decompText: familyDecompText(famSplit)"),
+    "the weakest family is built by the shared construction",
+  );
+  const helperAt = inspector.indexOf("export function familyDecompText(");
+  assert.ok(helperAt >= 0, "the inspector exports the shared construction");
+  const returnAt = inspector.indexOf("return ", helperAt);
+  assert.ok(returnAt > helperAt, "the construction returns its sentence");
+  const returnEnd = inspector.indexOf(";", returnAt);
+  assert.ok(returnEnd > returnAt, "the construction's return closes");
+  const decompExpr = inspector.slice(returnAt + "return ".length, returnEnd);
+  const produceDecomp = new Function(
+    "famSplit",
+    "fmtInt",
+    "fmtPct",
+    `"use strict"; return (${decompExpr});`,
+  );
+  // The sentence this test builds on its own, from its own
+  // recomputed split, in the board's forms, the same
+  // sentence the weakest family test builds. A family with
+  // no counted flips states its counts and its genuine
+  // rate with no share figure.
+  const sentenceFor = (s) =>
+    s.flips === 0
+      ? `Of its ${fmtIntT(s.flips)} counted flips, ${fmtIntT(s.malformedFlips)} went to malformed output, and its genuine flips are ${fmtPctT(s.genuineRate)} of its eligible cases.`
+      : `Of its ${fmtIntT(s.flips)} counted flips, ${fmtIntT(s.malformedFlips)} went to malformed output, ${fmtPctT(s.malformedShare)} of its counted flips, and its genuine flips are ${fmtPctT(s.genuineRate)} of its eligible cases.`;
+  // Every family of every result derives its split on the
+  // standing payload, and the sentence the production
+  // construction builds from the recomputed split equals
+  // the sentence built here, counted flips, malformed
+  // count, malformed share and genuine rate alike. No
+  // family rate in the view stands without this sentence.
+  let pairs = 0;
+  let emptyBase = 0;
+  for (const row of rows) {
+    for (const fam of familyRecords(row)) {
+      const split = deriveSplit(fam);
+      assert.ok(
+        split !== null,
+        `${row.run_id} ${fam.family} derives a decomposition`,
+      );
+      assert.equal(
+        produceDecomp(split, fmtIntT, fmtPctT),
+        sentenceFor(split),
+        `${row.run_id} ${fam.family} sentence`,
+      );
+      if (split.flips === 0) emptyBase += 1;
+      pairs += 1;
+    }
+  }
+  assert.equal(pairs, 537);
+  // Sixty families on the standing payload carry no
+  // counted flips, the guard families among them, and
+  // their sentences state counts with no share figure.
+  assert.equal(emptyBase, 60);
+  // The view's join, modelled. The bar's rate is keyed by
+  // the payload object's key, as familiesOf in lib/charts
+  // keys it, while the decomposition map is keyed by the
+  // record's own family field, as familyFlipDecomposition
+  // in lib/payload keys it, and the explorer data layer
+  // looks the split up by the object key. The two keyings
+  // meet only while every record's family field names the
+  // key it sits under, so assert exactly that for every
+  // entry of every result, with the key enumeration and
+  // the record enumeration counting the same. A record
+  // whose family field drifted from its key would derive
+  // cleanly above and still print its rate with no
+  // sentence under its bar, silently.
+  let joined = 0;
+  for (const row of rows) {
+    const raw = detailOf(row).families;
+    const entries =
+      raw && typeof raw === "object" && !Array.isArray(raw)
+        ? Object.entries(raw)
+        : [];
+    const records = familyRecords(row);
+    assert.equal(
+      entries.length,
+      records.length,
+      `${row.run_id} family keys and records count the same`,
+    );
+    const recordSet = new Set(records);
+    for (const [key, record] of entries) {
+      assert.ok(
+        recordSet.has(record),
+        `${row.run_id} ${key} key carries its family record`,
+      );
+      assert.equal(
+        record.family,
+        key,
+        `${row.run_id} ${key} record names the key it sits under`,
+      );
+      joined += 1;
+    }
+  }
+  assert.equal(joined, 537);
+  // Mercury's eleven families, figure for figure. Its
+  // counted flips are mostly malformed output, which is
+  // why none of its family rates may stand alone.
+  const mercury = flagged.reduce((a, b) =>
+    b.asr_conditional > a.asr_conditional ? b : a,
+  );
+  const mercuryExpected = {
+    canary_leakage: [160, 156],
+    crosslingual_shift: [212, 191],
+    cryptographic_payload: [296, 275],
+    evidence_positioning: [68, 63],
+    frequency_salience: [87, 86],
+    history_leakage: [160, 159],
+    judge_sycophancy: [98, 97],
+    question_pair_incoherence: [91, 91],
+    retrieval_poisoning: [295, 153],
+    threshold_edge_hunting: [71, 69],
+    verbosity_inflation: [194, 143],
+  };
+  const mercuryFams = familyRecords(mercury);
+  assert.equal(mercuryFams.length, 11);
+  for (const fam of mercuryFams) {
+    const split = deriveSplit(fam);
+    const [flips, malformed] = mercuryExpected[fam.family];
+    assert.equal(split.flips, flips, `mercury ${fam.family} counted flips`);
+    assert.equal(
+      split.malformedFlips,
+      malformed,
+      `mercury ${fam.family} malformed flips`,
+    );
+    assert.ok(
+      split.malformedShare > 0.5,
+      `mercury ${fam.family} flips are mostly malformed`,
+    );
+  }
+  // Mercury's cryptographic payload sentence stands in its
+  // exact printed form, the anchor the formatting ports
+  // and the lifted construction are both checked against.
+  const crypto = mercuryFams.find(
+    (f) => f.family === "cryptographic_payload",
+  );
+  assert.equal(
+    produceDecomp(deriveSplit(crypto), fmtIntT, fmtPctT),
+    "Of its 296 counted flips, 275 went to malformed output, 92.9% of its counted flips, and its genuine flips are 6.6% of its eligible cases.",
+  );
+  // The empty base form stands in its exact printed form
+  // on a guard family with no counted flips.
+  const granite = rows.find(
+    (r) => r.display_name === "ibm-granite/granite-guardian-hap-125m",
+  );
+  const graniteRp = familyRecords(granite).find(
+    (f) => f.family === "retrieval_poisoning",
+  );
+  assert.equal(
+    produceDecomp(deriveSplit(graniteRp), fmtIntT, fmtPctT),
+    "Of its 0 counted flips, 0 went to malformed output, and its genuine flips are 0.0% of its eligible cases.",
+  );
+  // The wiring. The explorer data layer derives each
+  // family's own split and builds its sentence through
+  // the shared construction, and the view renders the
+  // sentence under the family's bar, in the page's text
+  // and not only in the bar's title.
+  const explorerData = read("lib/explorerData.ts");
+  assert.ok(
+    explorerData.includes("const famDecomp = familyFlipDecomposition(row);"),
+  );
+  assert.ok(
+    explorerData.includes("famSplit !== null ? familyDecompText(famSplit) : null"),
+  );
+  const explorer = read("components/Explorer.tsx");
+  assert.ok(explorer.includes("fam.decompText"));
+  assert.ok(explorer.includes('className="xfam-decomp"'));
+  assert.match(css, /\.xfam-decomp \{ grid-column: 1 \/ -1;/);
 });
 
 test("the families mode prints full names against a labelled scale", () => {

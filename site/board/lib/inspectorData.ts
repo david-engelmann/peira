@@ -25,6 +25,7 @@ import {
   wireWords,
   type BoardGroups,
   type BoardRow,
+  type FlipDecomposition,
   type RankedRow,
 } from "@/lib/payload";
 import { fmtCi, fmtEce, fmtInt, fmtMs, fmtPct, fmtTax, fmtUsd } from "@/lib/format";
@@ -132,6 +133,25 @@ export function markOf(row: BoardRow): InspectorMark {
   };
 }
 
+/**
+ * The decomposition sentence one family's split prints,
+ * the one construction every surface that states a family
+ * figure shares (C-5, per-family scope). The counted
+ * flips and the malformed count state first, then the
+ * malformed share on its counted flips base and the
+ * genuine rate on its eligible cases base, in the
+ * whole-row phrasing the share card and the flagged
+ * reading already use. A family with no counted flips
+ * states its counts and its genuine rate with no share
+ * figure, there being no counted flips base for a share
+ * to rest on.
+ */
+export function familyDecompText(famSplit: FlipDecomposition): string {
+  return famSplit.flips === 0
+    ? `Of its ${fmtInt(famSplit.flips)} counted flips, ${fmtInt(famSplit.malformedFlips)} went to malformed output, and its genuine flips are ${fmtPct(famSplit.genuineRate)} of its eligible cases.`
+    : `Of its ${fmtInt(famSplit.flips)} counted flips, ${fmtInt(famSplit.malformedFlips)} went to malformed output, ${fmtPct(famSplit.malformedShare)} of its counted flips, and its genuine flips are ${fmtPct(famSplit.genuineRate)} of its eligible cases.`;
+}
+
 export function inspectorDatum(
   row: BoardRow,
   kind: InspectorKind,
@@ -182,15 +202,9 @@ export function inspectorDatum(
    * A result's family figures travel with their own
    * decompositions (C-5, per-family scope). A family whose
    * records derive none prints no figure here either, and
-   * cannot be named the weakest. The decomposition states
-   * the family's counted flips and how many of them went to
-   * malformed output, with the malformed share stated on
-   * its counted flips base and the genuine rate stated on
-   * its eligible cases base, in the whole-row phrasing the
-   * share card and the flagged reading already use. A
-   * family with no counted flips states its counts and
-   * its genuine rate with no share figure, there being no
-   * counted flips base for a share to rest on. */
+   * cannot be named the weakest. The sentence the named
+   * family carries is familyDecompText, the one
+   * construction every per-family surface states. */
   const fams = familiesOf(row);
   const famDecomp = familyFlipDecomposition(row);
   let weakest: {
@@ -217,10 +231,7 @@ export function inspectorDatum(
           fam.nEligible !== null
             ? `${fmtInt(fam.nEligible)} eligible cases`
             : null,
-        decompText:
-          famSplit.flips === 0
-            ? `Of its ${fmtInt(famSplit.flips)} counted flips, ${fmtInt(famSplit.malformedFlips)} went to malformed output, and its genuine flips are ${fmtPct(famSplit.genuineRate)} of its eligible cases.`
-            : `Of its ${fmtInt(famSplit.flips)} counted flips, ${fmtInt(famSplit.malformedFlips)} went to malformed output, ${fmtPct(famSplit.malformedShare)} of its counted flips, and its genuine flips are ${fmtPct(famSplit.genuineRate)} of its eligible cases.`,
+        decompText: familyDecompText(famSplit),
       };
     }
   }

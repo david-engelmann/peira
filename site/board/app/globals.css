@@ -589,6 +589,11 @@ button.xh.on { color: var(--accent); }
 .xfam-fill { display: block; height: 100%; background: var(--accent); }
 .xfamrow.flagged .xfam-fill { background: var(--amber); }
 .xfam-val { font-size: 12.5px; text-align: right; color: var(--ink-2); }
+/* The decomposition sentence stands under its bar, so a
+   family rate never prints in this view without its split
+   beside it (C-5, per-family scope). It speaks prose, as
+   the readings do, and wraps inside the bar's own width. */
+.xfam-decomp { grid-column: 1 / -1; margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
 
 .tray {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 55;

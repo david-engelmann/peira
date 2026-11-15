@@ -7,6 +7,22 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### The families view states every family's split
+
+- Every family bar in the explorer's families view
+  carries its malformed decomposition under the bar,
+  its counted flips, its malformed count and share,
+  and its genuine rate, each on its stated base, in
+  the words the weakest family sentence uses. A family
+  with no counted flips states its counts and its
+  genuine rate with no share figure.
+- The decomposition sentence is one construction in
+  the inspector data layer, shared by the weakest
+  family sentence and the families view, and the
+  families test builds it from its own recomputed
+  splits for every family of every result and compares
+  the two.
+
 ### The board wording states its populations and splits plainly
 
 - The Flip names the ranked full-suite population that
