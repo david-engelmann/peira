@@ -180,14 +180,17 @@ export function inspectorDatum(
         : null;
   /* The weakest family, from the run's own family records.
    * A result's family figures travel with their own
-   * decompositions (C-5, per-family scope): a family whose
+   * decompositions (C-5, per-family scope). A family whose
    * records derive none prints no figure here either, and
    * cannot be named the weakest. The decomposition states
    * the family's counted flips and how many of them went to
    * malformed output, with the malformed share stated on
    * its counted flips base and the genuine rate stated on
    * its eligible cases base, in the whole-row phrasing the
-   * share card and the flagged reading already use. */
+   * share card and the flagged reading already use. A
+   * family with no counted flips states its counts and
+   * its genuine rate with no share figure, there being no
+   * counted flips base for a share to rest on. */
   const fams = familiesOf(row);
   const famDecomp = familyFlipDecomposition(row);
   let weakest: {
@@ -214,7 +217,10 @@ export function inspectorDatum(
           fam.nEligible !== null
             ? `${fmtInt(fam.nEligible)} eligible cases`
             : null,
-        decompText: `Of its ${fmtInt(famSplit.flips)} counted flips, ${fmtInt(famSplit.malformedFlips)} went to malformed output, ${fmtPct(famSplit.malformedShare)} of its counted flips, and its genuine flips are ${fmtPct(famSplit.genuineRate)} of its eligible cases.`,
+        decompText:
+          famSplit.flips === 0
+            ? `Of its ${fmtInt(famSplit.flips)} counted flips, ${fmtInt(famSplit.malformedFlips)} went to malformed output, and its genuine flips are ${fmtPct(famSplit.genuineRate)} of its eligible cases.`
+            : `Of its ${fmtInt(famSplit.flips)} counted flips, ${fmtInt(famSplit.malformedFlips)} went to malformed output, ${fmtPct(famSplit.malformedShare)} of its counted flips, and its genuine flips are ${fmtPct(famSplit.genuineRate)} of its eligible cases.`,
       };
     }
   }
