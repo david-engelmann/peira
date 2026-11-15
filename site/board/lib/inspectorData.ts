@@ -114,32 +114,6 @@ export interface InspectorDatum {
   href: string;
 }
 
-/* The wire clause for a result measured through an agent
- * harness: the sub line states the harness because the
- * harness is part of the measurement, the same fact the
- * point titles on the scatter state. Keyed by the recorded
- * wire, so a new harness wire earns its clause here rather
- * than at a render site. */
-const WIRE_CLAUSE: Record<string, string> = {
-  "cursor-harness": "measured through the Cursor agent harness",
-};
-
-/* The short cost label for a harness run names the plan the
- * run drew on, and the long gloss states the billing fact in
- * full. A harness run is not chargeless. Its cost is billed
- * through the plan that carries the harness, so the board
- * prints the plan basis and never a figure for it. Keyed by
- * the recorded wire, beside the clause, so a new harness
- * wire earns both here rather than at a render site. */
-const HARNESS_PLAN_LABEL: Record<string, string> = {
-  "cursor-harness": "Cursor plan",
-};
-
-const HARNESS_COST_SUB: Record<string, string> = {
-  "cursor-harness":
-    "Measured through the Cursor agent harness. The run drew on a paid Cursor plan, so the cost is real and not metered per run.",
-};
-
 export function markOf(row: BoardRow): InspectorMark {
   const vendor = vendorOf(row);
   const family = vendorFamilyOf(row);
@@ -164,12 +138,9 @@ export function inspectorDatum(
   const name = shortName(row);
   const dup = dupes.has(name);
   const mark = markOf(row);
-  const clause = WIRE_CLAUSE[row.wire];
   const subLine = dup
     ? `${mark.label}, ${wireWords(row.wire)}`
-    : clause
-      ? `${mark.label}, ${clause}`
-      : mark.label;
+    : mark.label;
   const decomp = kind === "flagged" ? flipDecomposition(row) : null;
   const suppressed =
     kind === "flagged" && row.asr_conditional !== null && decomp === null;
@@ -183,35 +154,24 @@ export function inspectorDatum(
     benchmarks.benignSetter === name;
   const cost = costStateOf(row);
   /* A cost prints as a dollar figure only when it is a price.
-   * A recorded zero is never one on this board. A harness run
-   * prints the plan it drew on, a local run prints that it
-   * carries no API cost, and an unrecorded cost prints as
-   * unrecorded. No surface downstream of this derivation can
-   * turn any of the three back into $0.00. */
+   * A recorded zero is never one on this board. A local run
+   * prints that it carries no API cost, and an unrecorded
+   * cost prints as unrecorded. No surface downstream of this
+   * derivation can turn either back into $0.00. */
   const costText =
     cost.kind === "amount"
       ? fmtUsd(cost.value)
       : cost.kind === "lower-bound"
         ? `≥ ${fmtUsd(cost.value)}`
-        : cost.kind === "harness"
-          ? (HARNESS_PLAN_LABEL[row.wire] ?? "Harness plan")
-          : cost.kind === "local"
-            ? "No API cost"
-            : "No cost recorded";
-  /* The harness gloss is the full sentence, stated once here
-   * so the reading and every detail surface carry the same
-   * words. It is keyed by the run's recorded wire, so the
-   * harness and the plan named are the ones the payload
-   * records for the run. */
+        : cost.kind === "local"
+          ? "No API cost"
+          : "No cost recorded";
   const costSub =
     cost.kind === "lower-bound"
       ? "a lower bound, some calls went unpriced"
-      : cost.kind === "harness"
-        ? (HARNESS_COST_SUB[row.wire] ??
-          "Measured through an agent harness on a paid plan. The cost is real and not metered per run.")
-        : cost.kind === "local"
-          ? "served locally, no API cost"
-          : null;
+      : cost.kind === "local"
+        ? "served locally, no API cost"
+        : null;
   /* The weakest family, from the run's own family records.
    * A flagged result's family figures travel with their own
    * decompositions (C-5): a family whose records derive none

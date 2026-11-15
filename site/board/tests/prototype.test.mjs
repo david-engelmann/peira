@@ -379,7 +379,7 @@ test("the flagged reading states both decomposition bases", () => {
   assert.ok(!inspector.includes("genuine flip rate ${"));
 });
 
-test("recorded zero splits by how the run was measured", () => {
+test("the recorded zero payload census by adapter", () => {
   const zeroes = rows.filter((r) => r.total_cost_usd === 0);
   assert.equal(zeroes.length, 6);
   // No recorded zero is a harness run. The one harness run
@@ -397,32 +397,29 @@ test("recorded zero splits by how the run was measured", () => {
   assert.ok(rows.every((r) => "total_cost_usd" in r));
 });
 
-test("a harness run never renders as a dollar figure", () => {
+test("no cost state renders a recorded zero as a dollar figure", () => {
   const payloadLib = read("lib/payload.ts");
   const cards = read("lib/cards.ts");
   const inspector = read("lib/inspectorData.ts");
-  // The classification splits recorded zero by the adapter,
-  // keyed where the payload layer keeps the harness set.
-  assert.ok(payloadLib.includes('"cursor-harness"'));
-  assert.ok(payloadLib.includes("export function isHarnessRow"));
-  assert.match(cards, /isHarnessRow\(row\)/);
-  assert.match(cards, /kind: "harness"/);
+  // The classification gives a recorded zero exactly one
+  // state, the locally served run, derived in lib/cards.
+  assert.match(cards, /kind: "local", value: 0/);
   // No derivation turns a recorded zero into a dollar figure,
   // and each unpriced state prints as its own words.
   assert.ok(!inspector.includes("fmtUsd(0)"));
-  assert.ok(inspector.includes('"Cursor plan"'));
   assert.ok(inspector.includes('"No API cost"'));
   assert.ok(inspector.includes('"No cost recorded"'));
-  // The reading carries the full harness sentence, keyed by
-  // the wire the payload records for the run. The sentence
-  // states the billing truth, that the run drew on a paid
-  // plan, so no surface calls the run chargeless.
-  assert.ok(
-    inspector.includes(
-      "The run drew on a paid Cursor plan, so the cost is real and not metered per run.",
-    ),
-  );
-  assert.ok(inspector.includes('"measured through the Cursor agent harness"'));
+  // The harness cost state the pulled harness run once
+  // carried is gone from the data layer with the run itself.
+  // No payload row carries the harness adapter (the payload
+  // pin above), so no surface can meet the state, and these
+  // pins fail if the machinery returns without a row that
+  // can carry it.
+  assert.ok(!payloadLib.includes('"cursor-harness"'));
+  assert.ok(!payloadLib.includes("isHarnessRow"));
+  assert.ok(!cards.includes('kind: "harness"'));
+  assert.ok(!inspector.includes('"Cursor plan"'));
+  assert.ok(!inspector.includes("Cursor agent harness"));
 });
 
 test("no source claims a run was chargeless", () => {
@@ -454,26 +451,26 @@ test("no source claims a run was chargeless", () => {
   }
 });
 
-test("the harness rail group states the paid plan truth", () => {
+test("the rail groups state the cost truth", () => {
   const explorer = read("components/Explorer.tsx");
-  // The harness stands in the rail under its own heading,
-  // apart from the local runs it used to share a group with.
-  assert.ok(explorer.includes('head: "Measured through a harness"'));
+  // Each unpriced state stands in the rail under its own
+  // heading, and its note states why it stands off the axis
+  // rather than at zero.
   assert.ok(explorer.includes('head: "No API cost"'));
   assert.ok(
     explorer.includes(
-      "measured through the Cursor agent harness on a paid plan",
+      "These results were served locally and carry no API cost, so they stand off the axis rather than at zero.",
     ),
   );
-  assert.ok(
-    explorer.includes(
-      "Its cost is not metered per run, so it stands off the axis rather than at zero.",
-    ),
-  );
+  // The harness group the pulled harness run once filled is
+  // gone with the run. Its rows filter could only ever be
+  // empty, and these pins fail if the group returns.
+  assert.ok(!explorer.includes('head: "Measured through a harness"'));
+  assert.ok(!explorer.includes("Cursor agent harness"));
   // The rail splits its groups on the cost state kind the
   // data layer derives, not on the rendered words.
-  assert.ok(explorer.includes('r.costKind === "harness"'));
   assert.ok(explorer.includes('r.costKind === "local"'));
+  assert.ok(!explorer.includes('r.costKind === "harness"'));
 });
 
 test("the chart rail and the cost filter keep the cost states apart", () => {
@@ -482,8 +479,9 @@ test("the chart rail and the cost filter keep the cost states apart", () => {
   assert.ok(!explorer.includes("c === null || c === 0"));
   assert.ok(explorer.includes('label: "No recorded price", test: (c) => c === 0'));
   assert.ok(explorer.includes('label: "No cost recorded", test: (c) => c === null'));
-  // The rail heads its groups with their own words.
-  assert.ok(explorer.includes('head: "Measured through a harness"'));
+  // The rail heads its groups with their own words, and the
+  // harness group of the pulled run is not among them.
+  assert.ok(!explorer.includes('head: "Measured through a harness"'));
   assert.ok(explorer.includes('head: "No recorded cost"'));
   // The comparison subtracts prices only, so an unpriced side
   // can never print as a dollar difference from zero.
@@ -820,8 +818,17 @@ test("the chart names the selection when the disc is not theirs", () => {
   // with where it stands, beside the disc that stands in.
   assert.ok(explorer.includes("chart-selstand"));
   assert.ok(explorer.includes("The white disc singles out"));
+  // Every standing sentence names where its selection
+  // stands. The harness sentence of the pulled run is gone
+  // with the state that fed it, and this pin fails if it
+  // returns.
   assert.ok(
     explorer.includes(
+      "was served locally and stands in the rail below",
+    ),
+  );
+  assert.ok(
+    !explorer.includes(
       "was measured through a harness and stands in the rail below",
     ),
   );

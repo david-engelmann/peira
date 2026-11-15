@@ -7,6 +7,21 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Dormant harness machinery leaves the board
+
+- The cost state the pulled harness run once carried is
+  gone from the data layer, the inspector derivations,
+  the chart rail and the standing sentences. No payload
+  row carries the harness adapter, so no surface could
+  meet the state, and every rendered string stands byte
+  for byte as it stood.
+- Four board tests are restated to pin the surviving law
+  at the same strength, including absence pins that fail
+  if the machinery returns.
+- DESIGN.md and PRODUCT.md state the chart sync list as
+  the settled design it ships as, in place of the
+  recorded divergence each file carried.
+
 ### The design iterations land on the published board
 
 - The board takes the design language the prototype
