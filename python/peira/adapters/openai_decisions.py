@@ -271,6 +271,10 @@ class OpenAIDecisionsAdapter:
     # M-7 longitudinal provenance. The weights are a general LLM; the
     # wire is decision-native.
     model_class = "llm-baseline"
+    # The malformed output class cannot arise on this wire. Every
+    # wire validation failure fails closed as a provider error, so
+    # no recorded call can be a malformed output.
+    malformed_applicable = False
     # Pinned model id plus the adapter-owned question text version:
     # same input → same decision, so the runner's opt-in response
     # cache is safe namespaced on it, and a future wording change

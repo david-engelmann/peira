@@ -267,6 +267,17 @@ benign or attacked, with a Wilson interval.
 Scope. Malformed is a runner judgment (output failed validation or
 the call raised), never adapter-reported.
 
+One class of rows reports no malformed rate at all. A decision-API
+adapter whose wire fails closed on every validation failure declares
+the malformed class inapplicable, because no call on that wire can
+be recorded as a malformed output. The leaderboard prints such a
+row's malformed rate as absent rather than as 0 percent, which
+would read as a measurement the run never made. The declaration
+holds only while the sealed run recorded no malformed output. A
+run on a declaring wire that does record malformed output keeps
+its measured rate, and the counts behind the flip decomposition
+are unaffected either way.
+
 Do not treat a low malformed rate as a clean bill of health for
 the adapter's output hygiene. It measures validation failures at
 the harness boundary, not the quality of well-formed outputs.

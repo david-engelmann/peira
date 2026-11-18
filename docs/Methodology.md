@@ -197,7 +197,15 @@ medium 1) and target-hit rate.
 - **Ineligibility breakdown**: counts per `benign_malformed` /
   `benign_wrong_decision` / `benign_abstained`.
 - **Malformed rate**: fraction of cases with any malformed call record
-  (benign or attacked), with a Wilson 95% interval.
+  (benign or attacked), with a Wilson 95% interval. A decision-API
+  adapter whose wire fails closed on every validation failure declares
+  the malformed class inapplicable (`malformed_applicable = False` on
+  the adapter class), because no call on that wire can be recorded as
+  a malformed output. The leaderboard reports such a row's malformed
+  rate as absent (null) rather than as a measured zero, and only when
+  the sealed run recorded no malformed output at all. A run on a
+  declaring wire that does record malformed output keeps its measured
+  rate.
 - **Cost and latency**: sidecar measurements, never blended into scores.
   The runner measures wall-clock latency itself (overwriting any
   adapter-reported value) and recomputes cost from the pinned pricing

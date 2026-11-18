@@ -136,7 +136,11 @@ export interface WireFinding {
     wire: string;
     asr: number;
     ci: [number, number];
-    malformed: number;
+    /** The track's malformed rate, or null where the wire cannot
+     * produce malformed output and the payload reports the rate
+     * as not applicable. The track then prints no malformed
+     * figure, rather than a measured zero. */
+    malformed: number | null;
     cost: number | null;
   }>;
   gap: number;
@@ -230,11 +234,7 @@ export function findingsData(): FindingsData {
     (a, b) => (a.asr_conditional ?? 0) - (b.asr_conditional ?? 0),
   );
   const wireTracks = wireRows.map((row) => {
-    if (
-      row.asr_conditional === null ||
-      row.asr_ci95 === null ||
-      row.malformed_rate === null
-    ) {
+    if (row.asr_conditional === null || row.asr_ci95 === null) {
       throw new Error("findings: a wire track is missing its figures");
     }
     return {

@@ -575,6 +575,77 @@ def _model_id_for_spec(
     return None
 
 
+def _spec_declares_malformed_inapplicable(
+    spec: Any, adapter_name: Any
+) -> bool:
+    """True when the adapter a sealed spec attests declares the
+    malformed class inapplicable to its wire.
+
+    Follows the attestation discipline of :func:`_model_id_for_spec`.
+    The class named by ``spec`` ("module:Class") is resolved under
+    first-party modules only, and the declaration is trusted only
+    when the class is the adapter that ran (its declared ``name``
+    equals ``adapter_name``). The declaration must be the class's
+    own, read from its own attribute dict rather than through
+    inheritance. A subclass wire is a different wire, and the
+    audit a declaration rests on covers the declaring class only,
+    so a subclass that shares the property declares it itself.
+    Anything else (no spec, an unresolvable spec, another
+    adapter's spec, a class that makes no declaration of its own)
+    returns False, so a measured rate stands unless the running
+    adapter itself attests that the malformed class cannot arise
+    on its wire.
+    """
+    try:
+        if not isinstance(spec, str) or ":" not in spec:
+            return False
+        module_name, _, class_name = spec.partition(":")
+        if module_name != "peira" and not module_name.startswith("peira."):
+            return False
+        import importlib
+
+        cls = getattr(importlib.import_module(module_name), class_name)
+        if getattr(cls, "name", None) != adapter_name:
+            return False
+        return cls.__dict__.get("malformed_applicable", True) is False
+    except Exception:
+        return False
+
+
+def _recorded_genuine_malformed(results: list[dict[str, Any]]) -> bool:
+    """True when any call record in the results is genuine
+    malformed output.
+
+    A record counts when its malformed flag is set and the
+    runner's own discriminator does not classify it as a provider
+    error. Provider failures seal through the same blank-record
+    path with the flag set, but they measured the provider rather
+    than the model, so they never make a measured malformed rate
+    out of a run that produced no malformed output. Sweep results
+    carry every attacked call in the attempts list while the
+    attacked record holds only the final attempt, so the scan
+    reads the attempts with the same logic. A genuine malformed
+    record anywhere in the sealed run keeps the measured rate.
+    """
+    for r in results or []:
+        if not isinstance(r, dict):
+            continue
+        records = [r.get("benign"), r.get("attacked")]
+        attempts = r.get("attempts")
+        if isinstance(attempts, (list, tuple)):
+            records.extend(attempts)
+        for record in records:
+            if record is None:
+                continue
+            if isinstance(record, dict):
+                flagged = bool(record.get("malformed"))
+            else:
+                flagged = bool(getattr(record, "malformed", False))
+            if flagged and not _record_is_provider_error(record):
+                return True
+    return False
+
+
 def _display_name_from_raw(
     path: Path, fallback: str, adapter_name: str
 ) -> str:
@@ -687,6 +758,21 @@ def _leaderboard_stat_row(
     )
     unanswered, error_on_benign, error_on_attacked = (
         _provider_error_case_counts(artifact.results or []))
+    malformed_rate = h.get("malformed_rate")
+    if (
+        malformed_rate is not None
+        and _spec_declares_malformed_inapplicable(
+            cfg.get("adapter_spec"), artifact.adapter_name)
+        and not _recorded_genuine_malformed(artifact.results or [])
+    ):
+        # The wire that measured this run cannot produce malformed
+        # output (the adapter declares the class inapplicable and
+        # fails closed on every wire anomaly), and the sealed run
+        # recorded none. The rate is not applicable, so the row
+        # carries it as absent rather than as a measured zero. The
+        # guard keeps a measured rate standing if a run on such a
+        # wire ever does record malformed output.
+        malformed_rate = None
     return {
         "adapter_name": adapter,
         # The wire label names the adapter that produced this
@@ -715,7 +801,7 @@ def _leaderboard_stat_row(
         "asr_conditional": h.get("asr_conditional"),
         "asr_ci95": h.get("asr_ci95"),
         "benign_accuracy": h.get("benign_accuracy"),
-        "malformed_rate": h.get("malformed_rate"),
+        "malformed_rate": malformed_rate,
         "total_cost_usd": (h.get("cost", {}) or {}).get("total_cost_usd"),
         "latency_ms_p50_attacked": attacked_lat.get("p50"),
         "latency_ms_p95_attacked": attacked_lat.get("p95"),

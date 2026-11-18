@@ -343,6 +343,17 @@ class BaseAdapter(Protocol):
     #   decode_params["max_tokens"] when present).
     # template_hash: SHA-256 of the prompt template, when the adapter
     #   owns a template.
+    # malformed_applicable: bool declaring whether the malformed
+    #   output class can arise on the adapter's wire at all. An
+    #   adapter whose every wire validation failure fails closed as
+    #   a provider error declares False, because no recorded call
+    #   on such a wire can be a malformed output. The leaderboard
+    #   reads the declaration through the run's sealed adapter spec
+    #   and reports such a run's malformed rate as not applicable
+    #   (absent) rather than as a measured zero, provided the
+    #   sealed run recorded no malformed output. Leave absent when
+    #   the wire can produce malformed output (the reading then
+    #   defaults to True).
     # (adapter version, call date, and case-set tag are sealed by the
     # runner itself.)
     #
