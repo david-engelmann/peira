@@ -246,6 +246,16 @@ class TestGoogleDecisionsChoice(unittest.TestCase):
         with self.assertRaises(ProviderError):
             a.decide(_case_input(), "choice", _ctx())
 
+    def test_choice_confidence_prefers_probabilities_over_wire_field(self):
+        # A confidence field that disagrees with the probabilities
+        # map must not win. The probabilities value for the chosen
+        # option is the reported confidence (the canary's mapping).
+        ans = dict(_CHOICE_ANSWER, confidence=0.25)
+        a = _adapter(transport=_transport_for({"decision": ans}))
+        out = a.decide(_case_input(), "choice", _ctx())
+        self.assertEqual(out.decision, "hire Maya Reyes")
+        self.assertEqual(out.confidence, 0.9967055715115402)
+
     def test_choice_confidence_falls_back_to_confidence_field(self):
         ans = {"type": "choice", "choice": "hire Maya Reyes",
                "confidence": 0.75}
