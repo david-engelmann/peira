@@ -129,11 +129,14 @@ class TestGoogleDecisionsConstruction(unittest.TestCase):
     def test_env_fallback_key_accepted(self):
         import os
         old = os.environ.pop(API_KEY_ENV, None)
+        old_fallback = os.environ.pop(API_KEY_ENV_FALLBACK, None)
         os.environ[API_KEY_ENV_FALLBACK] = "tok-fallback"
         try:
             a = GoogleDecisionsAdapter()
         finally:
             os.environ.pop(API_KEY_ENV_FALLBACK, None)
+            if old_fallback is not None:
+                os.environ[API_KEY_ENV_FALLBACK] = old_fallback
             if old is not None:
                 os.environ[API_KEY_ENV] = old
         self.assertEqual(a._api_token, "tok-fallback")
@@ -303,6 +306,66 @@ class TestGoogleDecisionsScore(unittest.TestCase):
 
     def test_score_without_any_number_fails_closed(self):
         ans = {"type": "score", "confidence": 0.5}
+        a = self._score_adapter({"score": ans,
+                                 "decision": _SCORE_DECISION_ANSWER})
+        with self.assertRaises(ProviderError):
+            a.decide(self._score_input(), "score", _ctx())
+
+    def test_score_probabilities_key_outside_levels_fails_closed(self):
+        # A level key the rubric does not have is wire drift, not a
+        # level to weight. The map is void and the answer fails
+        # closed.
+        ans = {"type": "score", "probabilities": {"99": 1.0}}
+        a = self._score_adapter({"score": ans,
+                                 "decision": _SCORE_DECISION_ANSWER})
+        with self.assertRaises(ProviderError):
+            a.decide(self._score_input(), "score", _ctx())
+
+    def test_score_probabilities_value_out_of_range_fails_closed(self):
+        # A probability outside [0, 1] is not a probability; it is
+        # never clamped into a fabricated score.
+        ans = {"type": "score", "probabilities": {"0": 2.0}}
+        a = self._score_adapter({"score": ans,
+                                 "decision": _SCORE_DECISION_ANSWER})
+        with self.assertRaises(ProviderError):
+            a.decide(self._score_input(), "score", _ctx())
+
+    def test_score_probabilities_total_not_distribution_fails_closed(self):
+        # A map whose total is not within rounding distance of 1 is
+        # not a distribution over the rubric levels.
+        ans = {"type": "score", "probabilities": {"4": 0.5}}
+        a = self._score_adapter({"score": ans,
+                                 "decision": _SCORE_DECISION_ANSWER})
+        with self.assertRaises(ProviderError):
+            a.decide(self._score_input(), "score", _ctx())
+
+    def test_score_probabilities_noncanonical_key_fails_closed(self):
+        # Level keys are admitted by matching the canonical
+        # spellings, never by parsing: "4.0" names no level even
+        # though float() would parse it.
+        ans = {"type": "score", "probabilities": {"4.0": 1.0}}
+        a = self._score_adapter({"score": ans,
+                                 "decision": _SCORE_DECISION_ANSWER})
+        with self.assertRaises(ProviderError):
+            a.decide(self._score_input(), "score", _ctx())
+
+    def test_score_probabilities_non_numeric_key_fails_closed(self):
+        # A label in the score map is drift. It fails closed rather
+        # than discarding the map and reading the wire field.
+        ans = {"type": "score",
+               "probabilities": {"hire Maya Reyes": 1.0}}
+        a = self._score_adapter({"score": ans,
+                                 "decision": _SCORE_DECISION_ANSWER})
+        with self.assertRaises(ProviderError):
+            a.decide(self._score_input(), "score", _ctx())
+
+    def test_score_invalid_probabilities_no_wire_fallback(self):
+        # A supplied map that fails validation never falls back to
+        # the wire score field, even when that field carries a
+        # usable number. The fallback serves only an answer with no
+        # probabilities map.
+        ans = {"type": "score", "score": 2.0,
+               "probabilities": {"99": 1.0}}
         a = self._score_adapter({"score": ans,
                                  "decision": _SCORE_DECISION_ANSWER})
         with self.assertRaises(ProviderError):

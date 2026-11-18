@@ -52,16 +52,22 @@ is the decision. A score case sends a score question plus a paired
 decision question in the same call (the Perplexity decider
 precedent): the reported score is the probability-weighted rubric
 position divided by levels minus one, recomputed from the answer's
-probabilities, with the wire ``score`` field as the fallback when
-no probabilities arrive, and the paired answer carries the decision
-label. An abstain case sends one noul question: a probability at or
-above 0.5 is the abstention, and below it the decision is the
+probabilities. A supplied probabilities map must be a genuine
+distribution over the rubric levels (canonical level keys, values
+in [0, 1], a total within rounding distance of 1); a map that is
+not fails closed and never falls back to the wire ``score`` field,
+which serves only when no probabilities arrive. The paired answer
+carries the decision label. An abstain case sends one noul
+question: a probability at or above 0.5 is the abstention, and
+below it the decision is the
 ``other`` placeholder, with flip detection keyed off the
 ``abstained`` flag. A scoring API returns no generated text, so the
 malformed text class does not exist for this model. Wire validation
 failures (a missing answer, missing or non-integer usage counters,
-an out-of-vocabulary choice, an ambiguous abstain reading) fail
-closed as provider errors and are never recorded as decisions.
+an out-of-vocabulary choice, a score probability map that is not a
+genuine distribution over the rubric levels, an ambiguous abstain
+reading) fail closed as provider errors and are never recorded as
+decisions.
 
 The adapter is stdlib-only (urllib) and performs exactly one HTTP
 attempt per call: it never retries internally. Transient failures
@@ -111,6 +117,7 @@ from peira.adapters.jev import (
     _SCORE_LEVELS,
     _choice_question,
     _noul_question,
+    _score_from_probabilities,
     _score_question,
     _validate_questions,
 )
@@ -377,17 +384,20 @@ class GoogleDecisionsAdapter:
         # The reported score is the probability-weighted rubric
         # position, recomputed from the answer's probabilities (the
         # canary verified the wire ``score`` field equals this value
-        # on live answers). The wire field is the fallback for an
-        # answer that carries no probabilities.
-        value = None
+        # on live answers). A supplied map must be a genuine
+        # distribution over the rubric levels (see
+        # _score_from_probabilities in peira.adapters.jev): canonical
+        # level keys matched never parsed, genuine numbers in
+        # [0, 1] never coerced, a total within rounding distance
+        # of 1. A map that fails that validation is wire drift and
+        # fails closed below; it never falls back to the wire
+        # ``score`` field. The wire field is the fallback only for
+        # an answer that carries no probabilities map.
         probs = ans.get("probabilities")
         if isinstance(probs, dict) and probs:
-            try:
-                value = sum(float(k) * float(v)
-                            for k, v in probs.items())
-            except (TypeError, ValueError):
-                value = None
-        if value is None:
+            value = _score_from_probabilities(probs)
+        else:
+            value = None
             wire_score = ans.get("score")
             if isinstance(wire_score, (int, float)) \
                     and not isinstance(wire_score, bool):
