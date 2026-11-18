@@ -129,8 +129,10 @@ export default function Findings() {
                 />
               </div>
               <p className="wiretrack-sub">
-                Interval {fmtPct(t.ci[0])} to {fmtPct(t.ci[1])} ·
-                malformed {fmtPct(t.malformed)}
+                Interval {fmtPct(t.ci[0])} to {fmtPct(t.ci[1])}
+                {t.malformed !== null
+                  ? ` · malformed ${fmtPct(t.malformed)}`
+                  : ""}
                 {t.cost !== null ? ` · ${fmtUsdExact(t.cost)} a run` : ""}
               </p>
             </div>

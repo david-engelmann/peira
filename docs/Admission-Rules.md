@@ -75,6 +75,13 @@ population of the board's explorer, malformed response rate included,
 beside the ranking rather than in it, so a result is visible even when
 it carries no rank.
 
+A row measured through a decision-API adapter whose wire fails
+closed on every validation failure carries no malformed response
+rate. The class cannot arise on such a wire, so the board reports
+the rate as not applicable rather than as a measured zero. The
+admission gates are unaffected, because they recompute from the
+sealed per-case results rather than reading the printed rate.
+
 Every row also carries three counts of the cases whose calls
 produced no answer, derived from the sealed records with the
 runner's own provider-error discriminator. The first counts the

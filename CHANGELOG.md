@@ -7,6 +7,20 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### Decision-API rows report the malformed rate as not applicable
+
+- The decision-API adapters (Jev, Perplexity Decider, OpenAI
+  Decisions, OpenRouter Decisions, Celeris, Mercury Decide, and
+  Google Decisions) declare `malformed_applicable = False`. Every
+  wire validation failure on those wires fails closed as a
+  provider error, so no recorded call can be a malformed output.
+- The leaderboard reads the declaration through the artifact's
+  sealed adapter spec and reports such a row's malformed rate as
+  absent (null) instead of a measured zero, provided the sealed
+  run recorded no malformed output. The flip decomposition
+  counts, the admission gates, and every other figure are
+  unchanged.
+
 ### A Gemini Decisions adapter
 
 - `peira.adapters.google_decisions` measures Google's
