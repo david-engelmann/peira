@@ -820,6 +820,23 @@ class TestLeaderboardMalformedApplicability(unittest.TestCase):
             self.assertEqual(lb["n_ranked"], 1)
             self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.0)
 
+    def test_subclass_does_not_inherit_the_declaration(self):
+        # KevAdapter subclasses the Jev wire family through
+        # LocalSystemOneAdapter, but its wire was not part of the
+        # audit the declaration rests on. Inheritance alone does
+        # not carry the marker, so its measured zero stands until
+        # its own class declares the property.
+        with tempfile.TemporaryDirectory() as tmp:
+            art = _make_artifact(
+                adapter_name="kev",
+                adapter_version="jaredpalmer/kev-4b",
+                config={"cache_enabled": False,
+                        "adapter_spec": "peira.adapters.kev:KevAdapter"},
+            )
+            lb = self._board(tmp, art)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.0)
+
     def test_every_decision_wire_declaration_is_attested(self):
         from peira.dashboard import (
             _spec_declares_malformed_inapplicable,
@@ -851,6 +868,7 @@ class TestLeaderboardMalformedApplicability(unittest.TestCase):
             ("os.path:join", "jev"),
             ("peira.adapters.jev:NopeAdapter", "jev"),
             ("peira.adapters.jev:JevAdapter", "celeris"),
+            ("peira.adapters.kev:KevAdapter", "kev"),
         ]:
             self.assertFalse(
                 _spec_declares_malformed_inapplicable(spec, name),

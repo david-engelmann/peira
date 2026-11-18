@@ -585,11 +585,16 @@ def _spec_declares_malformed_inapplicable(
     The class named by ``spec`` ("module:Class") is resolved under
     first-party modules only, and the declaration is trusted only
     when the class is the adapter that ran (its declared ``name``
-    equals ``adapter_name``). Anything else (no spec, an
-    unresolvable spec, another adapter's spec, a class that makes
-    no declaration) returns False, so a measured rate stands unless
-    the running adapter itself attests that the malformed class
-    cannot arise on its wire.
+    equals ``adapter_name``). The declaration must be the class's
+    own, read from its own attribute dict rather than through
+    inheritance. A subclass wire is a different wire, and the
+    audit a declaration rests on covers the declaring class only,
+    so a subclass that shares the property declares it itself.
+    Anything else (no spec, an unresolvable spec, another
+    adapter's spec, a class that makes no declaration of its own)
+    returns False, so a measured rate stands unless the running
+    adapter itself attests that the malformed class cannot arise
+    on its wire.
     """
     try:
         if not isinstance(spec, str) or ":" not in spec:
@@ -602,7 +607,7 @@ def _spec_declares_malformed_inapplicable(
         cls = getattr(importlib.import_module(module_name), class_name)
         if getattr(cls, "name", None) != adapter_name:
             return False
-        return getattr(cls, "malformed_applicable", True) is False
+        return cls.__dict__.get("malformed_applicable", True) is False
     except Exception:
         return False
 
