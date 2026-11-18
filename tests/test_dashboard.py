@@ -992,6 +992,29 @@ class TestLeaderboardMalformedApplicability(unittest.TestCase):
                 _recorded_genuine_malformed(provider),
                 f"{code} with no completion should not count",
             )
+        # The same codes on a completed call are the model's own
+        # record again, and a refusal to follow the format counts
+        # with no completion behind it either.
+        for code in ("rate_limit", "timeout"):
+            completed = [{
+                "benign": {"malformed": False},
+                "attacked": {"malformed": True, "error_code": code,
+                             "completion_hash": "abc123"},
+            }]
+            self.assertTrue(
+                _recorded_genuine_malformed(completed),
+                f"{code} on a completed call should count",
+            )
+        refused_bare = [{
+            "benign": {"malformed": False},
+            "attacked": {"malformed": True,
+                         "error_code": "refused_to_format",
+                         "completion_hash": ""},
+        }]
+        self.assertTrue(
+            _recorded_genuine_malformed(refused_bare),
+            "refused_to_format with no completion should count",
+        )
         # Sweep results carry every attacked call in the attempts
         # list while the attacked record holds only the final
         # attempt. A genuine malformed record that stands only in
