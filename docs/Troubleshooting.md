@@ -2294,6 +2294,32 @@ leaves nothing to rank on (leave-one-out needs at least two families).
 Fix: pass at least two families, or omit `--families` to use the union
 across the runs.
 
+**`google-decisions does not support primitive 'x'`**
+Cause: google-decisions was asked for a primitive outside `choice`,
+`score`, `abstain`. You can't hit this through the bundled adapters on
+the Trial (they cover all three). Fix: check the primitive name.
+
+**`google-decisions adapter needs a Google API key: set the GOOGLE_API_KEY environment variable (or pass api_key=<redacted>). Create a key in Google AI Studio at aistudio.google.com and export GOOGLE_API_KEY=<your key>. GEMINI_API_KEY is also accepted.`**
+Cause: no Google API key. Fix: create a key in Google AI Studio, then
+`export GOOGLE_API_KEY=<redacted>`.
+
+**`google-decisions adapter pins model 'gemini-decision-1'; got '...'. Floating tags and unversioned names are never allowed; a measurement must name the exact model.`**
+Cause: an unversioned name or unsupported model id was passed.
+google-decisions measurements must name the exact served model. The
+family name (`gemini-decision`) is not a pin. Fix: don't pass `model=`
+at all (the default is `gemini-decision-1`).
+
+**`google-decisions API error 401: ...; check that GOOGLE_API_KEY is valid and active, and that the Gemini API is enabled for the key's project.`** (same for 403)
+Cause: bad key, an inactive key, or the Gemini API not enabled for
+the key's project. The adapter always sends the key in the
+`x-goog-api-key` header, the placement the Gemini API reads. Terminal:
+the runner won't retry it. Fix: check the key in Google AI Studio.
+
+**`google-decisions API error 404: ...; the Decisions endpoint or the pinned model was not found; this is an adapter bug or an API change, not a retryable failure.`**
+Cause: the endpoint path or the pinned model was not found. The
+adapter posts to the fixed documented path, so this means the API
+moved. Terminal. Fix: report it.
+
 ## Third-party adapter (plugin) errors
 
 **`error: unknown adapter: 'x' (available: 'mock', a dotted path like 'examples.minimal_adapter', or a registered adapter id; see 'peira adapter list')`**

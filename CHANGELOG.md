@@ -7,6 +7,19 @@ based on Keep a Changelog, and the project adheres to Semantic Versioning
 
 ## [Unreleased]
 
+### A Gemini Decisions adapter
+
+- `peira.adapters.google_decisions` measures Google's
+  `gemini-decision-1` on the Gemini Decisions API. The
+  adapter sends the Jev question set unchanged, maps
+  the scored answers onto the three primitives, and
+  fails closed on any wire validation failure. The
+  Decisions response carries no model echo, so the
+  transcript records the absent echo and the
+  measurement rests on the request alone.
+- The pricing table pins the model at $0.10 per 1M
+  input tokens with output free.
+
 ### The families view states every family's split
 
 - Every family bar in the explorer's families view
