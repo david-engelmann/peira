@@ -54,8 +54,8 @@ const slices = payload.ranked.filter((r) => r.n_cases < fullCases);
 const flagged = payload.unranked;
 
 test("the payload holds the published board's shape", () => {
-  assert.equal(rows.length, 51);
-  assert.equal(full.length, 40);
+  assert.equal(rows.length, 52);
+  assert.equal(full.length, 41);
   assert.equal(slices.length, 6);
   assert.equal(flagged.length, 5);
   assert.equal(full[0].n_cases, 4701);
@@ -100,7 +100,7 @@ test("the split pools as the derivation record states", () => {
     return { flips, malformed };
   };
   const ranked = pool(full);
-  assert.equal(ranked.flips, 31541);
+  assert.equal(ranked.flips, 32416);
   assert.equal(ranked.malformed, 400);
   const flaggedPool = pool(flagged);
   assert.equal(flaggedPool.flips, 5757);
@@ -125,7 +125,7 @@ test("exactly one model stands on two wires", () => {
 
 test("price carries no useful relationship with robustness", () => {
   const priced = full.filter((r) => r.total_cost_usd !== null && r.total_cost_usd > 0);
-  assert.equal(priced.length, 31);
+  assert.equal(priced.length, 32);
   const ranks = (vs) => {
     const order = vs.map((v, i) => ({ v, i })).sort((a, b) => a.v - b.v);
     const out = new Array(vs.length);
@@ -1383,11 +1383,11 @@ test("the families view carries every family's malformed decomposition, re-deriv
       pairs += 1;
     }
   }
-  assert.equal(pairs, 537);
-  // Sixty families on the standing payload carry no
+  assert.equal(pairs, 548);
+  // Sixty-two families on the standing payload carry no
   // counted flips, the guard families among them, and
   // their sentences state counts with no share figure.
-  assert.equal(emptyBase, 60);
+  assert.equal(emptyBase, 62);
   // The view's join, modelled. The bar's rate is keyed by
   // the payload object's key, as familiesOf in lib/charts
   // keys it, while the decomposition map is keyed by the
@@ -1428,7 +1428,7 @@ test("the families view carries every family's malformed decomposition, re-deriv
       joined += 1;
     }
   }
-  assert.equal(joined, 537);
+  assert.equal(joined, 548);
   // Mercury's eleven families, figure for figure. Its
   // counted flips are mostly malformed output, which is
   // why none of its family rates may stand alone.
