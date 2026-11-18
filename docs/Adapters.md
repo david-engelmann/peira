@@ -2376,6 +2376,72 @@ seconds for a single choice call, so the adapter's default
 timeout is 1,200 seconds and a full trial is a long run, on
 the order of days of wall time on that VM rather than hours.
 
+## Google Gemini Decisions
+
+No extra needed (stdlib transport). Set `GOOGLE_API_KEY`
+(`GEMINI_API_KEY` is also accepted), then run
+
+```bash
+export GOOGLE_API_KEY=<redacted>
+peira run --adapter peira.adapters.google_decisions:GoogleDecisionsAdapter --suite trial-demo
+```
+
+gemini-decision-1 is Google's decision model, served through the
+Gemini Decisions API. The adapter sends the case prompt as `input`
+plus named typed questions to `POST
+https://generativelanguage.googleapis.com/v1beta/decisions` with
+the key in the `x-goog-api-key` header, and reads the answers back
+out of the body's top-level `answers`. Each question carries
+`instructions`. Choice and score questions also carry `criteria`.
+The question text is the Jev adapter's unchanged (the builders are
+imported from `peira.adapters.jev`, as the TypeSafe Decider adapter
+imports them), so the wires see identical decision spaces. Answers
+carry `choice` (choice), `score` (score), or `noul` (abstain). The
+score question uses the same five described levels as the Jev
+adapter, the reported score is the probability-weighted rubric
+position divided by four, recomputed from the answer's
+probabilities, and the abstain primitive follows the Jev
+placeholder rule exactly (at or above probability 0.5 the decision
+is the deliberate label `abstain`, below it the `other`
+placeholder).
+
+The response is not enveloped. Its top level carries `answers` and
+`usage` with `total_input_tokens` and `total_output_tokens`
+counters. It carries no model echo anywhere, so there is no served
+identity to verify on the way back: a measurement under this pin
+rests on the request alone, and every transcript records the
+absent echo rather than smoothing it over. That is the one
+structural respect in which this wire is weaker than the
+Perplexity wire, whose adapter can refuse a response that names
+the wrong model. A response without usage counters is terminal. A
+call that cannot be priced cannot be recorded as free. A scoring
+API returns no generated text, so the malformed text class does
+not exist for this model, and wire validation failures fail closed
+as provider errors, never as decisions.
+
+One pinned model is supported. The pin is `gemini-decision-1` at
+$0.10 per 1M input tokens with output free (the wire reports zero
+output tokens on every call). The rate is Google's launch pricing
+for the Decisions API and is pinned in
+`python/peira/data/pricing.json`. The per-instance version and
+cache namespace follow the pin. Every other id is rejected at
+construction, so a run always names one exact model. 408, 409,
+429, 529 and 5xx statuses and transport timeouts surface as
+retryable provider errors for the runner, with any server
+`Retry-After` passed through. 401/403, 404 and 400/422 are
+terminal. The runner owns concurrency.
+
+**Live-verified wire.** The wire shape above was verified against
+the live API on 2026-11-16 by the standard driver canary, before
+the adapter was written. Twenty calls on real v2 cases returned
+twenty clean decisions with zero refusals and zero errors, two
+complete executions produced identical totals and identical
+spot-checked probabilities, and the plain string form of `input`
+was accepted on the first call. The production adapter's
+equivalence proof replays the same ten cases through the package
+adapter and diffs every decision, score, confidence and
+probability map against the canary record.
+
 ## Pricing
 
 `peira run` recomputes cost from the pinned table in

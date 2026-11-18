@@ -2294,6 +2294,114 @@ leaves nothing to rank on (leave-one-out needs at least two families).
 Fix: pass at least two families, or omit `--families` to use the union
 across the runs.
 
+**`google-decisions does not support primitive 'x'`**
+Cause: google-decisions was asked for a primitive outside `choice`,
+`score`, `abstain`. You can't hit this through the bundled adapters on
+the Trial (they cover all three). Fix: check the primitive name.
+
+**`google-decisions adapter needs a Google API key: set the GOOGLE_API_KEY environment variable (or pass api_key=<redacted>). Create a key in Google AI Studio at aistudio.google.com and export GOOGLE_API_KEY=<your key>. GEMINI_API_KEY is also accepted.`**
+Cause: no Google API key. Fix: create a key in Google AI Studio, then
+`export GOOGLE_API_KEY=<redacted>`.
+
+**`google-decisions adapter pins model 'gemini-decision-1'; got '...'. Floating tags and unversioned names are never allowed; a measurement must name the exact model.`**
+Cause: an unversioned name or unsupported model id was passed.
+google-decisions measurements must name the exact served model. The
+family name (`gemini-decision`) is not a pin. Fix: don't pass `model=`
+at all (the default is `gemini-decision-1`).
+
+**`google-decisions API error 401: ...; check that GOOGLE_API_KEY is valid and active, and that the Gemini API is enabled for the key's project.`** (same for 403)
+Cause: bad key, an inactive key, or the Gemini API not enabled for
+the key's project. The adapter always sends the key in the
+`x-goog-api-key` header, the placement the Gemini API reads. Terminal:
+the runner won't retry it. Fix: check the key in Google AI Studio.
+
+**`google-decisions API error 404: ...; the Decisions endpoint or the pinned model was not found; this is an adapter bug or an API change, not a retryable failure.`**
+Cause: the endpoint path or the pinned model was not found. The
+adapter posts to the fixed documented path, so this means the API
+moved. Terminal. Fix: report it.
+
+**`google-decisions API error 400: ...; the request was rejected; this is an adapter bug, not a retryable failure.`** (same for 422)
+Cause: the Decisions API rejected the request shape. The detail
+after the status is the API's own `error.message`. The adapter
+validates every question client-side before sending, so this
+means API drift. Terminal. Fix: report it. Don't retry.
+
+**`google-decisions API error 408` / `google-decisions API error 409` / `google-decisions API error 429` / `google-decisions API error 529` / `google-decisions API error 5xx`**
+Cause: a transient Gemini API failure or rate limiting. The
+adapter passes any `Retry-After` header to the runner, which
+retries these under `--max-attempts`. Fix: re-run. Sustained
+failures mean the endpoint is degraded.
+
+**`google-decisions response missing 'answers' object` / `google-decisions response missing answer 'decision'`**
+Cause: the API returned a body without the documented answers
+shape, or without the answer for a question the adapter asked
+(`decision`, `score`, or `abstain`). The adapter fails closed
+rather than treating a missing answer as a decision. This means
+API drift. Fix: report it.
+
+**`google-decisions response missing 'usage' object`**
+Cause: the API returned a body without the documented usage
+counters. A call without counters cannot be priced, and the
+adapter fails closed rather than recording it as a free call.
+This means API drift. Fix: report it.
+
+**`google-decisions transport error: ...` (status 408)**
+Cause: the connection dropped, DNS failed, or the request timed
+out before the API answered. Raised as status 408 so `peira run`
+treats it as transient and retries under `--max-attempts`. Fix:
+re-run. Sustained 408s mean your network or the Gemini endpoint
+is degraded.
+
+**`google-decisions returned non-JSON response (HTTP ...)` / `google-decisions returned a non-object JSON response`**
+Cause: the endpoint returned something that is not the documented
+JSON object (a proxy error page, HTML, a truncated body, or a
+JSON value that is not an object). Fix: check for a proxy or
+captive portal in the path. Otherwise report it.
+
+**`google-decisions returned choice 'x' outside the offered labels [...]; adapter bug or API drift.`**
+Cause: the model answered with a label that was not among the
+options the adapter offered. The same string covers the choice
+question and the paired decision question on a score call. Fix:
+report it. This means API drift or an adapter bug.
+
+**`google-decisions score answer has no numeric score: ...` / `google-decisions abstain answer has no numeric abstain value: ...`**
+Cause: the answer carried no numeric value the adapter can use.
+For a score answer, neither a probabilities map nor a wire
+`score` was present. For an abstain answer, the probability was
+absent or not a number. Fix: report it with the answer payload.
+
+**`google-decisions decision answer has no usable confidence: ...`**
+Cause: the decision answer carried no probabilities value for
+the chosen option and no numeric `confidence` field. Confidence
+is a measurement the model reports, and the adapter fails closed
+rather than inventing one. Fix: report it with the answer
+payload.
+
+**`google-decisions abstain answer probability out of range: ...`**
+Cause: the abstain probability was a number outside 0 to 1. The
+adapter fails closed rather than clamping it into an extreme
+measurement. Fix: report it with the answer payload.
+
+**`google-decisions abstain answer carries both 'abstain' (...) and 'noul' (...) with different values; refusing a measurement whose probability is ambiguous.`**
+Cause: the abstain answer carried the probability under two keys
+with different values. The verified wire uses `noul` only, so a
+second, disagreeing key means the API drifted and no preference
+order can say which value is the probability. The adapter fails
+closed. Fix: report it with the answer payload.
+
+**`google-decisions returned non-numeric confidence: ...` / `google-decisions returned non-numeric score: ...`**
+Cause: the API returned a non-numeric value where a confidence
+or a score was documented. Booleans and non-finite floats (NaN,
+infinities) count as non-numeric here. The adapter fails closed
+rather than clamping them into a fabricated measurement. Fix:
+report it with the value.
+
+**`google-decisions returned malformed usage counters: ...`**
+Cause: the response's `usage` object carried token counters
+that are not non-negative integers. Cost accounting fails
+closed rather than guessing. Fix: report it with the usage
+payload.
+
 ## Third-party adapter (plugin) errors
 
 **`error: unknown adapter: 'x' (available: 'mock', a dotted path like 'examples.minimal_adapter', or a registered adapter id; see 'peira adapter list')`**
