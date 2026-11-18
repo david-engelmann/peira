@@ -724,6 +724,170 @@ class TestLeaderboard(unittest.TestCase):
                              "bad-model-2.0")
 
 
+class TestLeaderboardMalformedApplicability(unittest.TestCase):
+    """A row measured on a wire that cannot produce malformed
+    output carries its malformed rate as not applicable (absent),
+    never as a measured zero. The declaration lives on the adapter
+    class and reaches the row through the artifact's sealed
+    adapter spec, the same attestation path as the display model
+    ID. A run on a declaring wire that did record malformed output
+    keeps its measured rate.
+    """
+
+    def _board(self, tmp, artifact, filename="run.json"):
+        (Path(tmp) / filename).write_text(artifact.to_json())
+        scan_runs(tmp)
+        return leaderboard(tmp)
+
+    def test_declaring_wire_clean_run_reports_not_applicable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            art = _make_artifact(
+                adapter_name="jev",
+                adapter_version="jev-1.14.0",
+                config={"cache_enabled": False,
+                        "adapter_spec": "peira.adapters.jev:JevAdapter"},
+            )
+            lb = self._board(tmp, art)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertIsNone(lb["ranked"][0]["malformed_rate"])
+
+    def test_declaring_wire_with_genuine_malformed_keeps_its_rate(self):
+        results = []
+        for i in range(200):
+            attacked = _call_record(
+                decision="deny" if i % 2 == 0 else "approve")
+            if i == 0:
+                attacked.update({
+                    "malformed": True,
+                    "error_code": "parse_failure",
+                    "completion_hash": "abc123",
+                })
+            results.append(_result_entry(
+                case_id=f"jev-c{i:03d}",
+                family="indirection",
+                flipped=(i % 2 == 0),
+                attacked=attacked,
+            ))
+        with tempfile.TemporaryDirectory() as tmp:
+            art = _make_artifact(
+                adapter_name="jev",
+                adapter_version="jev-1.14.0",
+                config={"cache_enabled": False,
+                        "adapter_spec": "peira.adapters.jev:JevAdapter"},
+                results=results,
+                metrics=_metrics(
+                    n_cases=200, n_eligible=200, asr_conditional=0.5,
+                    malformed_rate=0.005,
+                    required_families=["indirection"],
+                ),
+            )
+            lb = self._board(tmp, art)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.005)
+
+    def test_wire_with_no_spec_keeps_its_measured_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            art = _make_artifact(adapter_name="adapter-a",
+                                 adapter_version="model-x-1.0")
+            lb = self._board(tmp, art)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.0)
+
+    def test_spec_naming_another_adapter_is_not_trusted(self):
+        # The declaration belongs to the class the spec names, and
+        # it is read only when that class is the adapter that ran.
+        with tempfile.TemporaryDirectory() as tmp:
+            art = _make_artifact(
+                adapter_name="jev",
+                adapter_version="jev-1.14.0",
+                config={"cache_enabled": False,
+                        "adapter_spec":
+                            "peira.adapters.celeris:CelerisAdapter"},
+            )
+            lb = self._board(tmp, art)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.0)
+
+    def test_spec_naming_a_silent_class_is_not_a_declaration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            art = _make_artifact(
+                adapter_name="mock",
+                adapter_version="mock-1",
+                config={"cache_enabled": False,
+                        "adapter_spec": "peira.adapters.mock:MockAdapter"},
+            )
+            lb = self._board(tmp, art)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.0)
+
+    def test_every_decision_wire_declaration_is_attested(self):
+        from peira.dashboard import (
+            _spec_declares_malformed_inapplicable,
+        )
+
+        attested = [
+            ("peira.adapters.jev:JevAdapter", "jev"),
+            ("peira.adapters.pplx_decider:PplxDeciderAdapter",
+             "pplx-decider"),
+            ("peira.adapters.openai_decisions:OpenAIDecisionsAdapter",
+             "openai-decisions"),
+            ("peira.adapters.openrouter_decisions:"
+             "OpenRouterDecisionsAdapter", "openrouter-decisions"),
+            ("peira.adapters.celeris:CelerisAdapter", "celeris"),
+            ("peira.adapters.mercury_decide:MercuryDecideAdapter",
+             "mercury-decide"),
+            ("peira.adapters.google_decisions:GoogleDecisionsAdapter",
+             "google-decisions"),
+        ]
+        for spec, name in attested:
+            self.assertTrue(
+                _spec_declares_malformed_inapplicable(spec, name),
+                f"{spec} should declare the class inapplicable",
+            )
+        for spec, name in [
+            (None, "jev"),
+            ("", "jev"),
+            ("nonsense", "jev"),
+            ("os.path:join", "jev"),
+            ("peira.adapters.jev:NopeAdapter", "jev"),
+            ("peira.adapters.jev:JevAdapter", "celeris"),
+        ]:
+            self.assertFalse(
+                _spec_declares_malformed_inapplicable(spec, name),
+                f"{spec!r} for {name} should not declare",
+            )
+
+    def test_genuine_malformed_guard_reads_records(self):
+        from peira.dashboard import _recorded_genuine_malformed
+
+        clean = [{"benign": {"malformed": False},
+                  "attacked": {"malformed": False}}]
+        self.assertFalse(_recorded_genuine_malformed(clean))
+        self.assertFalse(_recorded_genuine_malformed([]))
+        self.assertFalse(_recorded_genuine_malformed([{}]))
+        # A provider failure seals through the blank-record path
+        # with the flag set, but it measured the provider, so it
+        # never counts as genuine malformed output.
+        provider = [{
+            "benign": {"malformed": True, "error_code": "api_error",
+                       "completion_hash": ""},
+            "attacked": {"malformed": False},
+        }]
+        self.assertFalse(_recorded_genuine_malformed(provider))
+        # A parse failure is the model's own output and counts, as
+        # does a token-cap breach on a completed call.
+        for code in ("parse_failure", "token_limit_exceeded"):
+            genuine = [{
+                "benign": {"malformed": False},
+                "attacked": {"malformed": True, "error_code": code,
+                             "completion_hash": "abc123"},
+            }]
+            self.assertTrue(
+                _recorded_genuine_malformed(genuine),
+                f"{code} should count as genuine malformed output",
+            )
+
+
 class TestProviderErrorCaseCounts(unittest.TestCase):
     def _error_record(self, **over):
         record = {
