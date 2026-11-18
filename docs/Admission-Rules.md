@@ -77,10 +77,13 @@ it carries no rank.
 
 A row measured through a decision-API adapter whose wire fails
 closed on every validation failure carries no malformed response
-rate. The class cannot arise on such a wire, so the board reports
-the rate as not applicable rather than as a measured zero. The
-admission gates are unaffected, because they recompute from the
-sealed per-case results rather than reading the printed rate.
+rate, provided its sealed run recorded no malformed output at
+all. The class cannot arise on such a wire, so the board reports
+the rate as not applicable rather than as a measured zero. A run
+on such a wire that does record malformed output keeps its
+measured rate. The admission gates are unaffected, because they
+recompute from the sealed per-case results rather than reading
+the printed rate.
 
 Every row also carries three counts of the cases whose calls
 produced no answer, derived from the sealed records with the

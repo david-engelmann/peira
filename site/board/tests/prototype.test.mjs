@@ -123,6 +123,30 @@ test("exactly one model stands on two wires", () => {
   assert.ok(Math.abs(costs[1] - 0.7537) < 0.001);
 });
 
+test("the wire finding prints a malformed figure only where one was measured", () => {
+  const luna = rows.filter((r) => r.display_name === "gpt-6-luna");
+  assert.equal(luna.length, 2);
+  const chat = luna.find((r) => r.wire === "openai-structured");
+  const decisions = luna.find((r) => r.wire === "openai-decisions");
+  // The chat wire generates text, so its malformed rate is a
+  // measurement and its track sub-line prints the figure. The
+  // Decisions wire fails closed on every validation failure, so
+  // no call on it can be recorded as malformed output and the
+  // payload reports the rate as absent. Its track prints no
+  // malformed figure rather than a measured zero.
+  assert.ok(Math.abs(chat.malformed_rate - 0.024) < 0.0006);
+  assert.equal(decisions.malformed_rate, null);
+  const findings = read("components/Findings.tsx");
+  assert.ok(
+    findings.includes(
+      "t.malformed !== null\n                  ? ` · malformed ${fmtPct(t.malformed)}`\n                  : \"\"}",
+    ),
+  );
+  const findingsLib = read("lib/findings.ts");
+  assert.ok(findingsLib.includes("malformed: row.malformed_rate"));
+  assert.ok(!findingsLib.includes("row.malformed_rate === null"));
+});
+
 test("price carries no useful relationship with robustness", () => {
   const priced = full.filter((r) => r.total_cost_usd !== null && r.total_cost_usd > 0);
   assert.equal(priced.length, 32);

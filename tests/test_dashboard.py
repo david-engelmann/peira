@@ -785,6 +785,50 @@ class TestLeaderboardMalformedApplicability(unittest.TestCase):
             self.assertEqual(lb["n_ranked"], 1)
             self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.005)
 
+    def test_declaring_wire_with_genuine_malformed_attempt_keeps_rate(
+            self):
+        # A sweep result carries every attacked call in its
+        # attempts list while the attacked record holds only the
+        # final attempt. A genuine malformed record that stands
+        # only in an earlier attempt is still malformed output
+        # the sealed run recorded, so the measured rate stands.
+        results = []
+        for i in range(200):
+            attacked = _call_record(
+                decision="deny" if i % 2 == 0 else "approve")
+            entry = _result_entry(
+                case_id=f"jev-c{i:03d}",
+                family="indirection",
+                flipped=(i % 2 == 0),
+                attacked=attacked,
+            )
+            if i == 0:
+                entry["attempts"] = [
+                    _call_record(
+                        decision="deny", malformed=True,
+                        error_code="parse_failure",
+                        completion_hash="abc123"),
+                    dict(attacked),
+                ]
+                entry["attempt_flipped"] = [True, True]
+            results.append(entry)
+        with tempfile.TemporaryDirectory() as tmp:
+            art = _make_artifact(
+                adapter_name="jev",
+                adapter_version="jev-1.14.0",
+                config={"cache_enabled": False,
+                        "adapter_spec": "peira.adapters.jev:JevAdapter"},
+                results=results,
+                metrics=_metrics(
+                    n_cases=200, n_eligible=200, asr_conditional=0.5,
+                    malformed_rate=0.005,
+                    required_families=["indirection"],
+                ),
+            )
+            lb = self._board(tmp, art)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.005)
+
     def test_wire_with_no_spec_keeps_its_measured_zero(self):
         with tempfile.TemporaryDirectory() as tmp:
             art = _make_artifact(adapter_name="adapter-a",
@@ -875,6 +919,36 @@ class TestLeaderboardMalformedApplicability(unittest.TestCase):
                 f"{spec!r} for {name} should not declare",
             )
 
+    def test_foreign_module_declaration_is_not_trusted(self):
+        # The attestation trusts first-party modules only. A
+        # class in a foreign module whose declared name equals an
+        # adapter name and whose own dict declares the class
+        # inapplicable still resolves False. Without the module
+        # gate this spec would resolve True, so the case pins the
+        # gate itself rather than the name check, which the
+        # foreign cases above cannot separate it from.
+        import sys
+        import types
+
+        from peira.dashboard import (
+            _spec_declares_malformed_inapplicable,
+        )
+
+        foreign = types.ModuleType("foreign_wire_fixture")
+
+        class ForeignJev:
+            name = "jev"
+            malformed_applicable = False
+
+        foreign.ForeignJev = ForeignJev
+        sys.modules["foreign_wire_fixture"] = foreign
+        try:
+            self.assertFalse(
+                _spec_declares_malformed_inapplicable(
+                    "foreign_wire_fixture:ForeignJev", "jev"))
+        finally:
+            sys.modules.pop("foreign_wire_fixture", None)
+
     def test_genuine_malformed_guard_reads_records(self):
         from peira.dashboard import _recorded_genuine_malformed
 
@@ -893,8 +967,10 @@ class TestLeaderboardMalformedApplicability(unittest.TestCase):
         }]
         self.assertFalse(_recorded_genuine_malformed(provider))
         # A parse failure is the model's own output and counts, as
-        # does a token-cap breach on a completed call.
-        for code in ("parse_failure", "token_limit_exceeded"):
+        # does a token-cap breach on a completed call and a refusal
+        # to follow the format.
+        for code in ("parse_failure", "token_limit_exceeded",
+                     "refused_to_format"):
             genuine = [{
                 "benign": {"malformed": False},
                 "attacked": {"malformed": True, "error_code": code,
@@ -904,6 +980,43 @@ class TestLeaderboardMalformedApplicability(unittest.TestCase):
                 _recorded_genuine_malformed(genuine),
                 f"{code} should count as genuine malformed output",
             )
+        # A rate limit and a timeout that produced no completion
+        # measured the provider, so neither counts.
+        for code in ("rate_limit", "timeout"):
+            provider = [{
+                "benign": {"malformed": False},
+                "attacked": {"malformed": True, "error_code": code,
+                             "completion_hash": ""},
+            }]
+            self.assertFalse(
+                _recorded_genuine_malformed(provider),
+                f"{code} with no completion should not count",
+            )
+        # Sweep results carry every attacked call in the attempts
+        # list while the attacked record holds only the final
+        # attempt. A genuine malformed record that stands only in
+        # an attempt still counts, and provider failures recorded
+        # as attempts still do not.
+        swept_genuine = [{
+            "benign": {"malformed": False},
+            "attacked": {"malformed": False},
+            "attempts": [
+                {"malformed": True, "error_code": "parse_failure",
+                 "completion_hash": "abc123"},
+                {"malformed": False},
+            ],
+        }]
+        self.assertTrue(_recorded_genuine_malformed(swept_genuine))
+        swept_provider = [{
+            "benign": {"malformed": False},
+            "attacked": {"malformed": False},
+            "attempts": [
+                {"malformed": True, "error_code": "rate_limit",
+                 "completion_hash": ""},
+                {"malformed": False},
+            ],
+        }]
+        self.assertFalse(_recorded_genuine_malformed(swept_provider))
 
 
 class TestProviderErrorCaseCounts(unittest.TestCase):

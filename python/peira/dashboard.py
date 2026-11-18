@@ -621,13 +621,20 @@ def _recorded_genuine_malformed(results: list[dict[str, Any]]) -> bool:
     error. Provider failures seal through the same blank-record
     path with the flag set, but they measured the provider rather
     than the model, so they never make a measured malformed rate
-    out of a run that produced no malformed output.
+    out of a run that produced no malformed output. Sweep results
+    carry every attacked call in the attempts list while the
+    attacked record holds only the final attempt, so the scan
+    reads the attempts with the same logic. A genuine malformed
+    record anywhere in the sealed run keeps the measured rate.
     """
     for r in results or []:
         if not isinstance(r, dict):
             continue
-        for arm in ("benign", "attacked"):
-            record = r.get(arm)
+        records = [r.get("benign"), r.get("attacked")]
+        attempts = r.get("attempts")
+        if isinstance(attempts, (list, tuple)):
+            records.extend(attempts)
+        for record in records:
             if record is None:
                 continue
             if isinstance(record, dict):
