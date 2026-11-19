@@ -12,11 +12,26 @@
 }
 
 :root {
-  --ground: #05070a;
-  --panel: #0c1015;
-  --panel-2: #141a21;
-  --lift: #1a222c;
-  --line: #232c35;
+  /* The ground system (iteration 12). The page ground is a
+     field, not a flat fill. Three steps of it stand here as
+     tokens. Ground is the base step the solid furniture
+     (the sticky explorer head, the scatter's label plates)
+     still names. Ground-top is the field's head, ground-deep
+     its foot, band is the step the alternating scenes stand
+     on, and inset is the recessed step under the charts.
+     The steps are small on purpose. Depth on this page is
+     luminance stacking, the Linear discipline the design
+     record names, over the Primer canvas ladder's role
+     split, a canvas, a band step, and an inset below both. */
+  --ground: #070a0f;
+  --ground-top: #0a0e15;
+  --ground-deep: #04060a;
+  --band: #0a0e14;
+  --inset: #05080c;
+  --panel: #0d1219;
+  --panel-2: #151d27;
+  --lift: #1e2936;
+  --line: #27333f;
   --line-soft: rgba(255, 255, 255, 0.05);
   --edge: rgba(255, 255, 255, 0.08);
   --ink: #eef2f6;
@@ -43,7 +58,18 @@ html { scroll-behavior: smooth; overflow-x: clip; }
 body {
   margin: 0;
   overflow-x: clip;
-  background: var(--ground);
+  /* The field. A quiet accent glow rests at the head of the
+     page behind the hero, a cool slate wash at the top right,
+     and a vertical fall from ground-top through ground to
+     ground-deep under both. The glow is the board's own
+     accent at four and a half percent, spent once at the page head in
+     the Linear manner, one signature light rather than a
+     decoration repeated per section. Nothing here moves. */
+  background:
+    radial-gradient(1000px 460px at 50% -140px, rgba(47, 191, 113, 0.045), rgba(47, 191, 113, 0) 70%),
+    radial-gradient(900px 620px at 88% -80px, rgba(96, 128, 168, 0.05), rgba(96, 128, 168, 0) 70%),
+    linear-gradient(180deg, var(--ground-top) 0, var(--ground) 460px, var(--ground-deep) 100%);
+  background-color: var(--ground-deep);
   color: var(--ink);
   font-family: "Archivo", system-ui, sans-serif;
   font-size: 14.5px;
@@ -90,12 +116,12 @@ h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
   position: sticky; top: 0; z-index: 40;
   display: flex; align-items: center; justify-content: space-between;
   margin: 0 -24px; padding: 8px 24px;
-  background: rgba(5, 7, 10, 0);
+  background: rgba(7, 10, 15, 0);
   border-bottom: 1px solid transparent;
   transition: background-color var(--dur-enter) ease, border-color var(--dur-enter) ease;
 }
 .masthead.scrolled {
-  background: rgba(5, 7, 10, 0.82);
+  background: rgba(7, 10, 15, 0.82);
   -webkit-backdrop-filter: blur(24px) saturate(1.8);
   backdrop-filter: blur(24px) saturate(1.8);
   border-bottom-color: var(--line-soft);
@@ -134,6 +160,22 @@ h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
   margin-top: 48px; padding-top: 48px;
   min-width: 0;
 }
+/* The banded scenes. Explorer and Method stand on the band
+   step, a full bleed ground step at the scene boundary in
+   the Primer manner, bands switching at section boundaries
+   rather than blending. The bleed rides a pseudo element
+   stretched to the viewport width behind the scene, so the
+   sticky heads and fixed sheets inside the scene keep the
+   viewport as their containing block. It starts one pixel
+   down, below the scene's own hairline, which still rules
+   the scene's head. */
+.scene.band { position: relative; z-index: 0; }
+.scene.band::before {
+  content: ""; position: absolute; z-index: -1;
+  top: 1px; bottom: 0; left: 50%; width: 100vw;
+  transform: translateX(-50%);
+  background: var(--band);
+}
 section[id] { scroll-margin-top: 84px; }
 .sechead { margin: 0 0 32px; }
 .sechead h2 {
@@ -152,6 +194,7 @@ section[id] { scroll-margin-top: 84px; }
   background: var(--panel);
   padding: 24px;
   margin: 0 0 24px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--shadow-1);
 }
 .finding h3 { margin: 8px 0 16px; max-width: 34ch; }
 .f-copy { color: var(--ink-2); max-width: 68ch; margin: 16px 0 0; }
@@ -255,6 +298,7 @@ section[id] { scroll-margin-top: 84px; }
   border-radius: var(--radius);
   background: var(--panel);
   padding: 24px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--shadow-1);
   transition: border-color var(--dur-micro) ease;
 }
 .leader-card:hover { border-color: var(--ink-3); }
@@ -274,7 +318,7 @@ section[id] { scroll-margin-top: 84px; }
 .sharecard {
   border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--panel); padding: 8px 24px; margin: 0 0 24px;
-  box-shadow: var(--shadow-1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--shadow-1);
 }
 .stack-entry { padding: 20px 0; }
 .stack-entry + .stack-entry { border-top: 1px solid var(--line-soft); }
@@ -308,7 +352,8 @@ section[id] { scroll-margin-top: 84px; }
   }
   .stack-entry {
     border: 1px solid var(--line); border-radius: var(--radius);
-    background: var(--panel); box-shadow: var(--shadow-1);
+    background: var(--panel);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--shadow-1);
     padding: 20px 24px;
   }
   .stack-entry + .stack-entry { border-top: 1px solid var(--line); }
@@ -385,7 +430,10 @@ section[id] { scroll-margin-top: 84px; }
    which the narrower track once let sit flush together. */
 .xhead {
   position: sticky; top: 61px; z-index: 30;
-  background: var(--ground);
+  /* The head sticks inside the banded explorer scene, so it
+     takes the band step and the rows pass under a ground
+     that matches the scene they scroll through. */
+  background: var(--band);
   padding: 8px 16px; border-bottom: 1px solid var(--line); margin-bottom: 8px;
 }
 .xh { font-size: 11.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; }
@@ -402,6 +450,7 @@ button.xh.on { color: var(--accent); }
 .xrow {
   position: relative; border: 1px solid var(--line-soft); border-radius: var(--radius);
   background: var(--panel); margin: 0 0 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   transition: border-color var(--dur-micro) ease;
 }
 .xrow.selected { border-color: var(--ink-3); }
@@ -451,7 +500,33 @@ button.xh.on { color: var(--accent); }
 .sevseg { white-space: nowrap; }
 .reading-line.flagged-line { color: var(--amber); }
 .reading-prov { color: var(--ink-3); font-size: 13.5px; margin: 12px 0 0; }
-.belowreading { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+/* The full record inside a reading (iteration 12). Ruled
+   data rows under a mono head, the reading's own grammar
+   extended to everything the payload carries. Family and
+   severity rows lead with the rate and its interval, then
+   state their counts, directions, and recorded figures as
+   sub lines. The run record states its facts as label and
+   value rows. The calibration strip plots one arm's
+   reliability bins against the diagonal at reading size. */
+.rdata { margin-top: 16px; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.rdata-head { color: var(--ink-3); margin: 0 0 4px; }
+.drow { padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+.drow:last-child { border-bottom: 0; }
+.drow-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.drow-name { font-weight: 650; }
+.drow-main { font-variant-numeric: tabular-nums; font-weight: 650; text-align: right; }
+.drow-ci { color: var(--ink-2); font-weight: 400; }
+.drow-sub { color: var(--ink-2); font-size: 13.5px; margin: 2px 0 0; }
+.cal-delta { margin-top: 8px; }
+.calstrip { display: block; width: 120px; height: auto; margin-top: 8px; }
+.calstrip-diag { stroke: var(--line); stroke-width: 1; }
+.calstrip-pt { fill: var(--accent); }
+.calstrip-tick { fill: var(--ink-3); font-size: 8px; font-family: "JetBrains Mono", monospace; }
+.rrow { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); font-size: 13.5px; }
+.rrow:last-child { border-bottom: 0; }
+.rrow > span { color: var(--ink-3); flex: 0 0 auto; }
+.rrow > strong { font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 400; text-align: right; overflow-wrap: anywhere; }
+.belowreading { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--shadow-1); }
 .belowreading .reading { border-top: 0; }
 
 .compare-head { display: flex; justify-content: space-between; align-items: center; }
@@ -463,7 +538,11 @@ button.xh.on { color: var(--accent); }
 .delta-row strong { font-size: 16px; font-variant-numeric: tabular-nums; }
 
 .chartlayout { display: grid; grid-template-columns: 1fr 264px; gap: 16px; align-items: start; }
-.chartwrap { position: relative; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 12px; }
+/* The chart well sits in the inset step, recessed below
+   the ground its panel stands on, the Primer canvas-inset
+   role spent on the one surface that holds a plot. The
+   inner shadow at its head is the recession cue. */
+.chartwrap { position: relative; border: 1px solid var(--line); border-radius: var(--radius); background: var(--inset); padding: 12px; box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.45); }
 .chart { width: 100%; height: auto; display: block; }
 .chart-bg { fill: transparent; cursor: crosshair; }
 .grid { stroke: var(--line); stroke-width: 1; opacity: 0.55; }
@@ -550,6 +629,7 @@ button.xh.on { color: var(--accent); }
    padding lets the last row scroll clear of the fade. */
 .chartsync {
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--shadow-1);
   padding: 16px; max-height: 640px; overflow: auto;
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
@@ -611,6 +691,26 @@ button.xh.on { color: var(--accent); }
 
 .method-head { font-size: 17px; margin: 24px 0 8px; }
 .method-p { color: var(--ink-2); max-width: 74ch; margin: 0; }
+/* Method in data form (iteration 12). The suite stands as
+   its own figures with the family names as chips, the
+   admission gates and the cost states as ruled rows with
+   the rule stated as the row's value, and what prose
+   remains stands as captions under the data it belongs to. */
+.method-cap { color: var(--ink-2); max-width: 74ch; margin: 8px 0 0; }
+.mstats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; max-width: 760px; margin: 4px 0 0; }
+.mstats .micro { display: block; }
+.mstats strong { display: block; font-size: 30px; font-weight: 750; font-variant-numeric: tabular-nums; margin-top: 4px; }
+.mchips { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 16px 0 0; padding: 0; }
+.mchips li { border: 1px solid var(--line); border-radius: var(--radius-ctl); background: var(--panel-2); padding: 6px 10px; font-size: 13.5px; color: var(--ink-2); }
+.mrows { border-top: 1px solid var(--line-soft); max-width: 760px; margin-top: 4px; }
+.mrow { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+.mrow > span { color: var(--ink-2); }
+.mrow > strong { font-weight: 650; text-align: right; }
+@media (max-width: 760px) {
+  .mstats { grid-template-columns: 1fr 1fr; }
+  .mrow { flex-direction: column; gap: 2px; }
+  .mrow > strong { text-align: left; }
+}
 .colophon { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 24px; color: var(--ink-3); font-size: 13.5px; }
 .colophon p { margin: 0 0 8px; }
 .model-redirect { padding-top: 64px; }
@@ -767,7 +867,7 @@ button.xh.on { color: var(--accent); }
 .flip {
   border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--panel); padding: 24px; margin: 0 0 24px;
-  box-shadow: var(--shadow-1); min-width: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--shadow-1); min-width: 0;
 }
 .flip-title { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 10px 0 0; }
 .flip-lede { color: var(--ink-2); max-width: 68ch; margin: 8px 0 0; }

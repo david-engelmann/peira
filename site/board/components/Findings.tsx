@@ -49,7 +49,7 @@ export default function Findings() {
         <div className="micro eyebrow">
           <span className="eno">03</span> Findings
         </div>
-        <h2>The split, the wire, and the guards</h2>
+        <h2>The wire, the guards, and the split</h2>
         <p className="cap">
           The evidence behind the headline results. Each reading
           below derives from the same payload as every number on
@@ -57,51 +57,6 @@ export default function Findings() {
         </p>
       </div>
 
-      <article className="finding" data-finding="split">
-        <p className="micro amber-text">Finding · Malformed output</p>
-        <h3>
-          The ranked board flips on decisions. The flagged band flips
-          on broken output.
-        </h3>
-        <SplitBar
-          label={`Ranked · ${fmtInt(f.split.ranked.rows)} results`}
-          figured={`${fmtInt(f.split.ranked.flips)} counted flips`}
-          malformedShare={f.split.ranked.share}
-          malformedLabel={`Malformed output, ${fmtPct(f.split.ranked.share)} of counted flips`}
-          genuineLabel={`Genuine flips, ${fmtPct(1 - f.split.ranked.share)} of counted flips`}
-        />
-        <SplitBar
-          label={`Flagged · ${fmtInt(f.split.flagged.rows)} results`}
-          figured={`${fmtInt(f.split.flagged.flips)} counted flips`}
-          malformedShare={f.split.flagged.share}
-          malformedLabel={`Malformed output, ${fmtPct(f.split.flagged.share)} of counted flips`}
-          genuineLabel={`Genuine flips, ${fmtPct(1 - f.split.flagged.share)} of counted flips`}
-        />
-        <SplitBar
-          label={`${shortName(f.split.mercury.row)} · the extreme`}
-          figured={`${fmtInt(f.split.mercury.flips)} counted flips`}
-          figuredInBar
-          malformedShare={f.split.mercury.malformedShare}
-          malformedLabel={`Malformed output, ${fmtPct(f.split.mercury.malformedShare)} of counted flips`}
-          genuineLabel={`Genuine flips, ${fmtPct(f.split.mercury.genuineShare)} of counted flips`}
-        />
-        <p className="f-copy">
-          Mercury alone counted {fmtInt(f.split.mercury.flips)} flips,
-          and {fmtInt(f.split.mercury.malformedFlips)} of them went to
-          malformed output. Its genuine flips are{" "}
-          {fmtPct(f.split.mercury.genuineRate)} of its eligible cases.
-          No ranked result has malformed output as
-          the majority of its counted flips. The highest malformed
-          rate on the ranked board is{" "}
-          {fmtPct(f.split.rankedMaxMalformedRate)}.
-        </p>
-        <a
-          className="f-action"
-          href={`#explorer?pop=all&mode=rank&sort=asr&sel=${mercurySlug}&open=1`}
-        >
-          Read this in the explorer
-        </a>
-      </article>
 
       <article className="finding" data-finding="wire">
         <p className="micro">Finding · The harness</p>
@@ -149,9 +104,8 @@ export default function Findings() {
           </p>
         </div>
         <p className="f-copy">
-          The same model ran the same suite through two OpenAI wires.
-          Only the wire changed, so take the gap as the size of the
-          harness effect.
+          The same model, the same suite, two OpenAI wires. Take the
+          gap as the size of the harness effect.
         </p>
         <a
           className="f-action"
@@ -211,11 +165,53 @@ export default function Findings() {
         <p className="f-copy">
           The six guard results ran the {fmtInt(f.guards.subsetCases)}{" "}
           cases where abstaining is a designed answer,{" "}
-          {fmtPct(f.guards.subsetShare)} of the suite. Not one of their{" "}
-          {fmtInt(f.guards.flips)} counted flips is a decision reversal,
-          and none of the six carries a recorded serving cost.
+          {fmtPct(f.guards.subsetShare)} of the suite. None of the six
+          carries a recorded serving cost.
         </p>
         <a className="f-action" href="#explorer?pop=guards&mode=rank">
+          Read this in the explorer
+        </a>
+      </article>
+
+      <article className="finding" data-finding="split">
+        <p className="micro">Finding · The split</p>
+        <h3>
+          The ranked board flips on decisions. The flagged band flips
+          on broken output.
+        </h3>
+        <SplitBar
+          label={`Ranked · ${fmtInt(f.split.ranked.rows)} results`}
+          figured={`${fmtInt(f.split.ranked.flips)} counted flips`}
+          malformedShare={f.split.ranked.share}
+          malformedLabel={`Malformed output, ${fmtPct(f.split.ranked.share)} of counted flips`}
+          genuineLabel={`Genuine flips, ${fmtPct(1 - f.split.ranked.share)} of counted flips`}
+        />
+        <SplitBar
+          label={`Flagged · ${fmtInt(f.split.flagged.rows)} results`}
+          figured={`${fmtInt(f.split.flagged.flips)} counted flips`}
+          malformedShare={f.split.flagged.share}
+          malformedLabel={`Malformed output, ${fmtPct(f.split.flagged.share)} of counted flips`}
+          genuineLabel={`Genuine flips, ${fmtPct(1 - f.split.flagged.share)} of counted flips`}
+        />
+        <SplitBar
+          label={`${shortName(f.split.mercury.row)} · the extreme`}
+          figured={`${fmtInt(f.split.mercury.flips)} counted flips`}
+          figuredInBar
+          malformedShare={f.split.mercury.malformedShare}
+          malformedLabel={`Malformed output, ${fmtPct(f.split.mercury.malformedShare)} of counted flips`}
+          genuineLabel={`Genuine flips, ${fmtPct(f.split.mercury.genuineShare)} of counted flips`}
+        />
+        <p className="f-copy">
+          Mercury's genuine flips are{" "}
+          {fmtPct(f.split.mercury.genuineRate)} of its eligible cases.
+          No ranked result has malformed output as the majority of
+          its counted flips. The highest malformed rate on the
+          ranked board is {fmtPct(f.split.rankedMaxMalformedRate)}.
+        </p>
+        <a
+          className="f-action"
+          href={`#explorer?pop=all&mode=rank&sort=asr&sel=${mercurySlug}&open=1`}
+        >
           Read this in the explorer
         </a>
       </article>

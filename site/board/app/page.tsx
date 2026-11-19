@@ -113,9 +113,9 @@ export default function Home() {
 
       <footer className="colophon">
         <p>
-          Dataset {versions.dataset} · Suite {versions.suite} ·{" "}
-          {countsLine} The figures derive from the sealed runs in the
-          payload this page links.
+          Dataset {versions.dataset} · Suite {versions.suite} · The
+          figures derive from the sealed runs in the payload this
+          page links.
         </p>
         {rerunNote !== null && <p>{rerunNote}</p>}
         <p>

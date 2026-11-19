@@ -886,7 +886,7 @@ test("the plot pads its right edge and the discs read at floor size", () => {
   // field dim untouched.
   assert.ok(explorer.includes("r={subject ? 17 : 15}"));
   assert.ok(explorer.includes('"#4a5763"'));
-  assert.ok(explorer.includes('"#05070a"'));
+  assert.ok(explorer.includes('"#070a0f"'));
   assert.match(css, /\.disc-letter \{ fill: #f4f7fa; font-size: 11\.5px;/);
   assert.match(css, /\.disc\.field \{ opacity: 0\.5; \}/);
   // The sync list fades at its foot instead of slicing a row.
@@ -1591,7 +1591,7 @@ test("the pulled run's undecided case stands nowhere in the findings", () => {
   assert.ok(!findings.includes("never decided"));
   assert.ok(!findings.includes("leader-fig"));
   assert.ok(!findings.includes("Cursor agent harness"));
-  assert.ok(findings.includes("The split, the wire, and the guards"));
+  assert.ok(findings.includes("The wire, the guards, and the split"));
   const findingsLib = read("lib/findings.ts");
   assert.ok(!findingsLib.includes("LeaderFinding"));
   const stylesheet = read("app/globals.css");
@@ -1868,7 +1868,10 @@ test("the token hygiene the re-score named stands as audited", () => {
   // three shadows. The banner rule the prototype keeps
   // for its own page is dead in this tree, where no page
   // renders the banner, and F9's scoping deletes it from
-  // this sheet outright.
+  // this sheet outright. Iteration 12 adds the ground
+  // system's four steps, ground-top, ground-deep, band,
+  // and inset, each consumed in this sheet and recorded
+  // in DESIGN.md, and the census grows to 28 with them.
   const root = css.slice(
     css.indexOf(":root"),
     css.indexOf("}", css.indexOf(":root")),
@@ -1877,7 +1880,8 @@ test("the token hygiene the re-score named stands as audited", () => {
     (m) => m[1],
   );
   const audited = [
-    "--ground", "--panel", "--panel-2", "--lift", "--line",
+    "--ground", "--ground-top", "--ground-deep", "--band", "--inset",
+    "--panel", "--panel-2", "--lift", "--line",
     "--line-soft", "--edge", "--ink", "--ink-2", "--ink-3",
     "--white", "--accent", "--amber", "--glyph-dark", "--seg-genuine",
     "--radius", "--radius-ctl", "--shadow-1", "--shadow-2",
@@ -1887,7 +1891,7 @@ test("the token hygiene the re-score named stands as audited", () => {
   assert.deepEqual(
     [...defined].sort(),
     [...audited].sort(),
-    "the sheet's token set is not the audited census of 24",
+    "the sheet's token set is not the audited census of 28",
   );
   const parts = [];
   const walk = (dir) => {
@@ -2224,7 +2228,7 @@ test("the method scene stands in the scene rhythm at every width", () => {
   // scene crowded it at 24px against the 48px rhythm, and
   // the colophon kept the pre-rhythm 64px at every width.
   const method = read("components/MethodStub.tsx");
-  assert.ok(method.includes('className="method scene"'));
+  assert.ok(method.includes('className="method scene band"'));
   assert.ok(!css.includes(".section { margin-top: 0; }"));
   assert.match(css, /\.colophon \{[^}]*margin-top: 48px;/);
 });

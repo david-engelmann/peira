@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ExplorerData, XRow } from "@/lib/explorerData";
+import type { ExplorerData, XCalArm, XRow } from "@/lib/explorerData";
 import Mark from "@/components/Mark";
 import {
   fmtDeltaPct,
@@ -94,6 +94,54 @@ function decompLine(row: XRow): string | null {
   return `${fmtInt(d.flips)} counted flips · ${fmtInt(d.malformedFlips)} to malformed output · genuine flips ${fmtPct(d.genuineRate)} of ${fmtInt(row.nEligible)} eligible cases`;
 }
 
+function CalArm({ arm, label }: { arm: XCalArm; label: string }) {
+  const figs: string[] = [];
+  if (arm.eceText !== null) figs.push(`ECE ${arm.eceText}`);
+  if (arm.brierText !== null) figs.push(`Brier ${arm.brierText}`);
+  if (figs.length === 0 && arm.bins.length === 0) return null;
+  return (
+    <div className="drow">
+      <div className="drow-top">
+        <span className="drow-name">{label}</span>
+        <span className="drow-main">{figs.join(" · ")}</span>
+      </div>
+      {arm.coverageText && <p className="drow-sub">{arm.coverageText}</p>}
+      {arm.murphyText && <p className="drow-sub">{arm.murphyText}</p>}
+      {arm.bins.length > 0 && (
+        <svg
+          className="calstrip"
+          viewBox="0 0 120 124"
+          role="img"
+          aria-label={`${label} reliability, forecast against outcome`}
+        >
+          <line
+            x1="10"
+            y1="110"
+            x2="110"
+            y2="10"
+            className="calstrip-diag"
+          />
+          {arm.bins.map((b, i) => (
+            <circle
+              key={i}
+              cx={10 + b.x * 100}
+              cy={110 - b.y * 100}
+              r={2.5}
+              className="calstrip-pt"
+            />
+          ))}
+          <text x="10" y="121" className="calstrip-tick">
+            0
+          </text>
+          <text x="104" y="121" className="calstrip-tick">
+            1
+          </text>
+        </svg>
+      )}
+    </div>
+  );
+}
+
 function ReadingBody({ row }: { row: XRow }) {
   const d = decompLine(row);
   return (
@@ -146,18 +194,6 @@ function ReadingBody({ row }: { row: XRow }) {
             : ""}
         </p>
       )}
-      {row.severities.length > 0 && (
-        <p className="reading-line">
-          {row.severities.map((s, i) => (
-            <span key={s.label}>
-              {i > 0 && " · "}
-              <span className="sevseg">
-                {`${s.label} ${s.flipText ?? "no rate"}${s.baseText ? ` over ${s.baseText}` : ""}`}
-              </span>
-            </span>
-          ))}
-        </p>
-      )}
       {row.flaggedReason && (
         <p className="reading-line flagged-line">{row.flaggedReason}</p>
       )}
@@ -166,6 +202,81 @@ function ReadingBody({ row }: { row: XRow }) {
       {row.singleCall && <p className="reading-line">{row.singleCall}</p>}
       <p className="reading-prov">{row.provenanceLine}</p>
       {row.rerunText && <p className="reading-prov">{row.rerunText}</p>}
+      {row.record.families.length > 0 && (
+        <div className="rdata">
+          <p className="micro rdata-head">Attack families</p>
+          {row.record.families.map((f) => (
+            <div className="drow" key={f.key}>
+              <div className="drow-top">
+                <span className="drow-name">{f.full}</span>
+                <span className="drow-main">
+                  {f.asrText ?? "·"}
+                  {f.ciText ? (
+                    <span className="drow-ci"> {f.ciText}</span>
+                  ) : null}
+                </span>
+              </div>
+              {f.countsText && <p className="drow-sub">{f.countsText}</p>}
+              {f.directionsText && (
+                <p className="drow-sub">{f.directionsText}</p>
+              )}
+              {f.metaText && <p className="drow-sub">{f.metaText}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+      {row.record.severities.length > 0 && (
+        <div className="rdata">
+          <p className="micro rdata-head">Severity</p>
+          {row.record.severities.map((s) => (
+            <div className="drow" key={s.label}>
+              <div className="drow-top">
+                <span className="drow-name">{s.label}</span>
+                <span className="drow-main">
+                  {s.flipText ?? "·"}
+                  {s.ciText ? (
+                    <span className="drow-ci"> {s.ciText}</span>
+                  ) : null}
+                </span>
+              </div>
+              {s.segments.length > 0 && (
+                <p className="drow-sub">
+                  {s.segments.map((seg, i) => (
+                    <span key={seg}>
+                      {i > 0 && " · "}
+                      <span className="sevseg">{seg}</span>
+                    </span>
+                  ))}
+                </p>
+              )}
+              {s.metaText && <p className="drow-sub">{s.metaText}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+      {row.record.calibration !== null && (
+        <div className="rdata">
+          <p className="micro rdata-head">Calibration</p>
+          <CalArm arm={row.record.calibration.benign} label="Benign" />
+          <CalArm arm={row.record.calibration.attacked} label="Attacked" />
+          {row.record.calibration.deltaText && (
+            <p className="drow-sub cal-delta">
+              {row.record.calibration.deltaText}
+            </p>
+          )}
+        </div>
+      )}
+      {row.record.runFacts.length > 0 && (
+        <div className="rdata">
+          <p className="micro rdata-head">Run record</p>
+          {row.record.runFacts.map((fact) => (
+            <div className="rrow" key={fact.label}>
+              <span>{fact.label}</span>
+              <strong>{fact.value}</strong>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -553,7 +664,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   };
 
   return (
-    <section className="explorer scene" id="explorer" ref={sectionRef} aria-label="Explorer">
+    <section className="explorer scene band" id="explorer" ref={sectionRef} aria-label="Explorer">
       <div className="sechead">
         <div className="micro eyebrow">
           <span className="eno">02</span> Explorer
@@ -1703,7 +1814,7 @@ function ChartView({
                       ? "#e8a33d"
                       : subject
                         ? "none"
-                        : "#05070a"
+                        : "#070a0f"
                   }
                   strokeWidth={
                     row.kind === "flagged" ? (subject ? 2 : 1.5) : 1.5

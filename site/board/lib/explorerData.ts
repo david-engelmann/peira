@@ -14,7 +14,15 @@ import {
   splitDisplayName,
   type BoardRow,
 } from "@/lib/payload";
-import { fmtEce, fmtPct } from "@/lib/format";
+import {
+  fmtCi,
+  fmtDelta3,
+  fmtEce,
+  fmtInt,
+  fmtMs,
+  fmtPct,
+  fmtUsdExact,
+} from "@/lib/format";
 import { vendorFamilyOf } from "@/lib/vendorColors";
 import { asrAxisFor, axisPct } from "@/lib/chart";
 import {
@@ -110,6 +118,8 @@ export interface XRow {
     bins: Array<{ x: number; y: number; n: number }>;
   } | null;
   provenanceLine: string;
+  /** The full record behind the reading's summary lines. */
+  record: XRecord;
   rerunText: string | null;
   flaggedReason: string | null;
   sliceNote: string | null;
@@ -117,6 +127,358 @@ export interface XRow {
   singleCall: string | null;
   nCases: number;
   nEligible: number;
+}
+
+/**
+ * The full record (iteration 12). Everything the payload
+ * carries for one result that the reading did not already
+ * state, shaped as printable lines. The family rows carry
+ * every family's rate with its interval, its case counts,
+ * its flip directions, its recorded cost, its mean latency,
+ * and its refusal rate. The severity rows carry the rate
+ * with its interval, the flipped and eligible counts, the
+ * recorded cost, and the summed latency. The calibration
+ * block carries both arms with their intervals, the Murphy
+ * components, the confidence coverage, the change under
+ * attack, and both arms' reliability bins. The run facts
+ * carry the provenance and the run's own tallies. A field
+ * the payload does not carry for a result stays absent.
+ * Nothing here is computed beyond the board's own format
+ * renderings of the sealed fields.
+ */
+export interface XFamilyDetail {
+  key: string;
+  full: string;
+  asrText: string | null;
+  ciText: string | null;
+  countsText: string | null;
+  directionsText: string | null;
+  metaText: string | null;
+}
+
+export interface XSeverityDetail {
+  label: string;
+  flipText: string | null;
+  ciText: string | null;
+  /** The count statements as separate segments, so the
+   * reading can hold each one unbroken on its own line
+   * span, the severity segments' standing no split rule. */
+  segments: string[];
+  metaText: string | null;
+}
+
+export interface XCalArm {
+  eceText: string | null;
+  brierText: string | null;
+  murphyText: string | null;
+  coverageText: string | null;
+  bins: Array<{ x: number; y: number; n: number }>;
+}
+
+export interface XRecord {
+  families: XFamilyDetail[];
+  severities: XSeverityDetail[];
+  calibration: {
+    benign: XCalArm;
+    attacked: XCalArm;
+    deltaText: string | null;
+  } | null;
+  runFacts: Array<{ label: string; value: string }>;
+}
+
+function numOrNull(x: unknown): number | null {
+  return typeof x === "number" && Number.isFinite(x) ? x : null;
+}
+
+function strOrNull(x: unknown): string | null {
+  return typeof x === "string" && x !== "" ? x : null;
+}
+
+function pairOrNull(x: unknown): [number, number] | null {
+  return Array.isArray(x) &&
+    x.length === 2 &&
+    typeof x[0] === "number" &&
+    typeof x[1] === "number"
+    ? [x[0], x[1]]
+    : null;
+}
+
+function recOrEmpty(x: unknown): Record<string, unknown> {
+  return x !== null && typeof x === "object" && !Array.isArray(x)
+    ? (x as Record<string, unknown>)
+    : {};
+}
+
+function shortHash(v: string): string {
+  return v.length > 12 ? `${v.slice(0, 12)}…` : v;
+}
+
+const DIRECTION_LABELS: Array<[string, string]> = [
+  ["approve-to-deny", "approve to deny"],
+  ["deny-to-approve", "deny to approve"],
+  ["score-shifted", "score shifted"],
+  ["to-abstain", "to abstain"],
+  ["to-malformed", "to malformed"],
+  ["other", "other"],
+];
+
+function familyDetailOf(
+  row: BoardRow,
+  famOrder: string[],
+): XFamilyDetail[] {
+  const fams = recOrEmpty(recOrEmpty(row.detail).families);
+  const out: XFamilyDetail[] = [];
+  for (const key of famOrder) {
+    const f = recOrEmpty(fams[key]);
+    if (Object.keys(f).length === 0) continue;
+    const asr = numOrNull(f.asr);
+    const ci = pairOrNull(f.asr_ci95);
+    const n = numOrNull(f.n);
+    const nFlipped = numOrNull(f.n_flipped);
+    const nEligible = numOrNull(f.n_eligible);
+    const counts: string[] = [];
+    if (n !== null) counts.push(`${fmtInt(n)} cases`);
+    if (nFlipped !== null && nEligible !== null)
+      counts.push(
+        `${fmtInt(nFlipped)} flipped of ${fmtInt(nEligible)} eligible`,
+      );
+    const dirs = recOrEmpty(f.flip_direction);
+    const dirParts: string[] = [];
+    for (const [k, label] of DIRECTION_LABELS) {
+      const c = numOrNull(dirs[k]);
+      if (c !== null && c > 0) dirParts.push(`${fmtInt(c)} ${label}`);
+    }
+    const meta: string[] = [];
+    const cost = numOrNull(f.cost_usd);
+    if (cost !== null && cost > 0) meta.push(fmtUsdExact(cost));
+    const latMean = numOrNull(f.latency_ms_mean);
+    if (latMean !== null) meta.push(`mean latency ${fmtMs(latMean)}`);
+    const refusal = numOrNull(f.refusal_rate);
+    if (refusal !== null) meta.push(`refusals ${fmtPct(refusal)}`);
+    out.push({
+      key,
+      full: familyFullName(key),
+      asrText: asr !== null ? fmtPct(asr) : null,
+      ciText: ci !== null ? fmtCi(ci) : null,
+      countsText: counts.length > 0 ? counts.join(" · ") : null,
+      directionsText: dirParts.length > 0 ? dirParts.join(" · ") : null,
+      metaText: meta.length > 0 ? meta.join(" · ") : null,
+    });
+  }
+  return out;
+}
+
+const SEVERITY_KEYS: Array<[string, string]> = [
+  ["critical", "Critical"],
+  ["high", "High"],
+  ["medium", "Medium"],
+];
+
+function severityDetailOf(row: BoardRow): XSeverityDetail[] {
+  const sevs = recOrEmpty(recOrEmpty(row.detail).severities);
+  const out: XSeverityDetail[] = [];
+  for (const [key, label] of SEVERITY_KEYS) {
+    const s = recOrEmpty(sevs[key]);
+    if (Object.keys(s).length === 0) continue;
+    const rate = numOrNull(s.flip_rate_raw);
+    const ci = pairOrNull(s.flip_rate_ci95);
+    const n = numOrNull(s.n);
+    const nFlipped = numOrNull(s.n_flipped);
+    const nEligible = numOrNull(s.n_eligible);
+    const segments: string[] = [];
+    if (nFlipped !== null && nEligible !== null)
+      segments.push(
+        `${fmtInt(nFlipped)} flipped of ${fmtInt(nEligible)} eligible`,
+      );
+    if (n !== null) segments.push(`${fmtInt(n)} cases`);
+    const meta: string[] = [];
+    const cost = numOrNull(s.cost_usd);
+    if (cost !== null && cost > 0) meta.push(fmtUsdExact(cost));
+    const latTotal = numOrNull(s.latency_ms_total);
+    if (latTotal !== null)
+      meta.push(`summed latency ${fmtInt(Math.round(latTotal / 1000))}s`);
+    out.push({
+      label,
+      flipText: rate !== null ? fmtPct(rate) : null,
+      ciText: ci !== null ? fmtCi(ci) : null,
+      segments,
+      metaText: meta.length > 0 ? meta.join(" · ") : null,
+    });
+  }
+  return out;
+}
+
+function calArmOf(
+  cal: Record<string, unknown>,
+  armKey: string,
+  coverage: number | null,
+): XCalArm {
+  const arm = recOrEmpty(cal[armKey]);
+  const ece = numOrNull(arm.ece);
+  const eceCi = pairOrNull(arm.ece_ci95);
+  const brier = numOrNull(arm.brier);
+  const brierCi = pairOrNull(arm.brier_ci95);
+  const murphy = recOrEmpty(arm.murphy);
+  const murphyParts: string[] = [];
+  for (const [k, label] of [
+    ["reliability", "reliability"],
+    ["resolution", "resolution"],
+    ["uncertainty", "uncertainty"],
+    ["residual", "residual"],
+  ] as Array<[string, string]>) {
+    const v = numOrNull(murphy[k]);
+    if (v !== null) murphyParts.push(`${label} ${fmtEce(v)}`);
+  }
+  const binsRaw = recOrEmpty(
+    recOrEmpty(cal.reliability_bins)[armKey],
+  ).bins;
+  const bins: XCalArm["bins"] = [];
+  if (Array.isArray(binsRaw)) {
+    for (const b of binsRaw) {
+      const bin = recOrEmpty(b);
+      const mf = numOrNull(bin.mean_forecast);
+      const mo = numOrNull(bin.mean_outcome);
+      const bn = numOrNull(bin.n);
+      if (mf !== null && mo !== null && bn !== null)
+        bins.push({ x: mf, y: mo, n: bn });
+    }
+  }
+  const withCi = (
+    v: number | null,
+    ci: [number, number] | null,
+  ): string | null =>
+    v === null
+      ? null
+      : ci !== null
+        ? `${fmtEce(v)} [${fmtEce(ci[0])}, ${fmtEce(ci[1])}]`
+        : fmtEce(v);
+  return {
+    eceText: withCi(ece, eceCi),
+    brierText: withCi(brier, brierCi),
+    murphyText:
+      murphyParts.length > 0 ? `Murphy ${murphyParts.join(" · ")}` : null,
+    coverageText:
+      coverage !== null ? `confidence coverage ${fmtPct(coverage)}` : null,
+    bins,
+  };
+}
+
+function calibrationDetailOf(row: BoardRow): XRecord["calibration"] {
+  const cal = recOrEmpty(recOrEmpty(row.detail).calibration);
+  if (Object.keys(cal).length === 0) return null;
+  const coverage = recOrEmpty(cal.confidence_coverage);
+  const benign = calArmOf(cal, "benign", numOrNull(coverage.benign));
+  const attacked = calArmOf(
+    cal,
+    "attacked",
+    numOrNull(coverage.attacked),
+  );
+  const dEce = recOrEmpty(cal.delta_ece);
+  const dBrier = recOrEmpty(cal.delta_brier);
+  const deltaParts: string[] = [];
+  for (const [d, label] of [
+    [dEce, "ECE"],
+    [dBrier, "Brier"],
+  ] as Array<[Record<string, unknown>, string]>) {
+    const dv = numOrNull(d.delta);
+    const ci = pairOrNull(d.ci95);
+    if (dv !== null)
+      deltaParts.push(
+        ci !== null
+          ? `${label} ${fmtDelta3(dv)} [${fmtDelta3(ci[0])}, ${fmtDelta3(ci[1])}]`
+          : `${label} ${fmtDelta3(dv)}`,
+      );
+  }
+  return {
+    benign,
+    attacked,
+    deltaText:
+      deltaParts.length > 0
+        ? `Change under attack · ${deltaParts.join(" · ")}`
+        : null,
+  };
+}
+
+function runFactsOf(row: BoardRow): XRecord["runFacts"] {
+  const prov = recOrEmpty(row.provenance);
+  const top = row as unknown as Record<string, unknown>;
+  const facts: Array<{ label: string; value: string }> = [];
+  const push = (label: string, value: string | null) => {
+    if (value !== null && value !== "") facts.push({ label, value });
+  };
+  const adapterName = strOrNull(prov.adapter_name);
+  const adapterVersion = strOrNull(prov.adapter_version);
+  push(
+    "Adapter",
+    adapterName !== null
+      ? adapterVersion !== null
+        ? `${adapterName} · ${adapterVersion}`
+        : adapterName
+      : null,
+  );
+  push("Adapter spec", strOrNull(prov.adapter_spec));
+  const revision = strOrNull(prov.adapter_revision);
+  push("Adapter revision", revision !== null ? shortHash(revision) : null);
+  push("Contract", strOrNull(prov.contract_version));
+  const seed = numOrNull(prov.seed);
+  push("Seed", seed !== null ? String(seed) : null);
+  const pricingVersion = strOrNull(prov.pricing_version);
+  const pricingDate = strOrNull(prov.pricing_date);
+  push(
+    "Pricing",
+    pricingVersion !== null
+      ? pricingDate !== null
+        ? `${pricingVersion} · ${pricingDate}`
+        : pricingVersion
+      : null,
+  );
+  const manifest = strOrNull(prov.manifest_sha256);
+  push("Manifest", manifest !== null ? shortHash(manifest) : null);
+  const env = strOrNull(prov.env_sha256);
+  push("Environment", env !== null ? shortHash(env) : null);
+  push("Run", shortHash(row.run_id));
+  push("Run date", runDateWords(row));
+  push("Wire", row.wire);
+  push(
+    "Cases",
+    `${fmtInt(row.n_cases)} · ${fmtInt(row.n_eligible)} eligible`,
+  );
+  const p50 = numOrNull(top.latency_ms_p50_attacked);
+  const p95 = numOrNull(top.latency_ms_p95_attacked);
+  push(
+    "Latency, attacked",
+    p50 !== null || p95 !== null
+      ? [
+          p50 !== null ? `p50 ${fmtMs(p50)}` : null,
+          p95 !== null ? `p95 ${fmtMs(p95)}` : null,
+        ]
+          .filter((p): p is string => p !== null)
+          .join(" · ")
+      : null,
+  );
+  const errB = numOrNull(top.error_on_benign_cases);
+  const errA = numOrNull(top.error_on_attacked_cases);
+  push(
+    "Calls with errors",
+    errB !== null || errA !== null
+      ? `benign ${errB !== null ? fmtInt(errB) : "·"} · attacked ${errA !== null ? fmtInt(errA) : "·"}`
+      : null,
+  );
+  const unanswered = numOrNull(top.unanswered_cases);
+  push(
+    "Unanswered cases",
+    unanswered !== null ? fmtInt(unanswered) : null,
+  );
+  return facts;
+}
+
+function recordOf(row: BoardRow, famOrder: string[]): XRecord {
+  return {
+    families: familyDetailOf(row, famOrder),
+    severities: severityDetailOf(row),
+    calibration: calibrationDetailOf(row),
+    runFacts: runFactsOf(row),
+  };
 }
 
 export interface ExplorerData {
@@ -251,6 +613,7 @@ function shapeRow(
             })),
           },
     provenanceLine: provParts.join(" · "),
+    record: recordOf(row, famOrder),
     rerunText:
       row.rerun != null
         ? `This result is chained to an earlier run in its record, on ${row.rerun.date}. Its figures are its own standing figures.`

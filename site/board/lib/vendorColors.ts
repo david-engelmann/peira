@@ -100,7 +100,7 @@ export function vendorColorOf(row: {
  * no per family exception is recorded anywhere. The floor
  * and the step are the whole rule.
  */
-const CHIP_PANEL = "#0c1015";
+const CHIP_PANEL = "#0d1219";
 const CHIP_TINT_SHARE = 0.16;
 export const CHIP_MARK_FLOOR = 4.5;
 const CHIP_MARK_STEP = 0.05;

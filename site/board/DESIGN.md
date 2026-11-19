@@ -3,11 +3,15 @@ version: alpha
 name: Peira benchmark board
 description: Design tokens and law for the peira benchmark board, an Operate surface where charts carry the page and every figure is evidence.
 colors:
-  ground: "#05070a"
-  panel: "#0c1015"
-  panel-2: "#141a21"
-  lift: "#1a222c"
-  hairline: "#232c35"
+  ground: "#070a0f"
+  ground-top: "#0a0e15"
+  ground-deep: "#04060a"
+  band: "#0a0e14"
+  inset: "#05080c"
+  panel: "#0d1219"
+  panel-2: "#151d27"
+  lift: "#1e2936"
+  hairline: "#27333f"
   edge: "rgba(255, 255, 255, 0.08)"
   edge-soft: "rgba(255, 255, 255, 0.05)"
   ink-1: "#eef2f6"
@@ -15,8 +19,8 @@ colors:
   ink-3: "#71808f"
   accent: "#2fbf71"
   amber: "#e8a33d"
-  chart-grid: "#232c35"
-  chart-axis: "#232c35"
+  chart-grid: "#27333f"
+  chart-axis: "#27333f"
   chart-tick: "#71808f"
   chart-glyph-dark: "#0b0e12"
   chart-glyph-light: "#f4f7fa"
@@ -169,6 +173,15 @@ components:
   page:
     backgroundColor: "{colors.ground}"
     textColor: "{colors.ink-1}"
+  page-field-top:
+    backgroundColor: "{colors.ground-top}"
+  page-depth:
+    backgroundColor: "{colors.ground-deep}"
+  scene-band:
+    backgroundColor: "{colors.band}"
+  chart-well:
+    backgroundColor: "{colors.inset}"
+    textColor: "{colors.ink-1}"
   scene-lede:
     textColor: "{colors.ink-2}"
     typography: "{typography.body}"
@@ -195,7 +208,7 @@ This file carries no colors.primary token, deliberately. The accent token carrie
 
 ## Colors
 
-The surface ladder is assigned, never improvised. Ground is the page. Panel is a well's floor. Panel 2 separates elements inside a well, and the stylesheet spends it on tracks, inputs, rail rows, hover grounds, and delta rows. Lift is reserved for the floating elements, the scatter detail chip, the comparison tray, and the phone foot strip. No section invents a gradient or tint of its own.
+The surface ladder is assigned, never improvised. The page ground is a field built from its own steps. Ground is the base step, ground-top heads the field, and ground-deep closes it at the foot, with one quiet glow of the accent resting at the head of the page and a cool slate wash at its top right. Band is the step the alternating scenes stand on, switched at the scene boundary rather than blended, and inset is the recessed step the chart wells sit in, below the ground their panels stand on. Panel is a well's floor. Panel 2 separates elements inside a well, and the stylesheet spends it on tracks, inputs, rail rows, hover grounds, and delta rows. Lift is reserved for the floating elements, the scatter detail chip, the comparison tray, and the phone foot strip. Raised panels carry one inset top highlight, a single pixel of white at five percent, and depth everywhere is luminance stacking in small steps rather than new hues. The field is one system stated here. No section invents a gradient or tint of its own.
 
 The sticky nav is not a ladder element. It is the frosted bar, the board's one sanctioned frost, in the pattern source's material. At rest it is transparent over the first screen. On scroll it takes the ground color at 82 percent opacity, with a backdrop blur of 24px and saturate at 1.8, over a hairline bottom edge in the soft line step. The glassmorphism ban in the Don't list does not reach it. No other surface takes the frost.
 
@@ -207,7 +220,7 @@ Maker identity rides every figure, in the form each surface carries. On the scat
 
 The vendor chip is a tint, not a solid. Its ground is a 16 percent color-mix of the family color over the panel, its border is a 42 percent color-mix of the same color, and its mark or monogram letter is drawn in the mark color derived from the family color against the floor stated below. It renders at 22px, 30px, and 44px in its mini, row, and card forms. The vendor-chip tokens in the front matter record the solid pair, the family ground with its paired glyph ink, and for the seven lead families the tokens pair every family with the dark glyph ink. The vendor table is the operative assignment where the two differ, and it assigns the light glyph ink to anthropic, meta, and deepseek. Surfaces filled with a solid family color, as the share image's big discs are, take their glyph ink from chart-glyph-dark or chart-glyph-light, whichever the family table assigns.
 
-The contrast floor in Typography binds the chip's mark on its tint, without a split by kind, and the shipped code now meets it by derivation rather than by exception. The mark is the family color lightened toward white by the smallest five percent step that clears 4.5 to 1 against the tint ground, computed in the code from the family color alone, so a re-sampled family color takes its new mark with it and no per family exception is recorded anywhere. Five families stood under the floor in the family color itself, protectai at 2.34 to 1, zhipu at 3.60, upstage at 3.77, meta at 4.30, and deepseek at 4.47. The derivation moves exactly those five. Protectai lightens six steps to 4.57, zhipu three steps to 4.56, upstage three steps to 4.78, meta one step to 4.64, and deepseek one step to 4.81. Every other family and the fallback clear the floor unlightened, the lowest of them minimax at 4.73. No ground adjusts here, and the chipColor cure an earlier version of this file recorded, with its two adjusted values, stays deleted from the record, because the shipped vendor table carries no such field and needs none. The cure is item F5 on the coherence re-score list, landed. On the scatter itself the marks are comfortable, the monogram letter at 9.36 to 1 on the field disc and the logo glyph at 5.18 to 1.
+The contrast floor in Typography binds the chip's mark on its tint, without a split by kind, and the shipped code now meets it by derivation rather than by exception. The mark is the family color lightened toward white by the smallest five percent step that clears 4.5 to 1 against the tint ground, computed in the code from the family color alone, so a re-sampled family color takes its new mark with it and no per family exception is recorded anywhere. Five families stand under the floor in the family color itself, protectai at 2.30 to 1, zhipu at 3.53, upstage at 3.69, meta at 4.21, and deepseek at 4.37. The derivation moves exactly those five. Protectai lightens seven steps to 5.01, zhipu four steps to 4.83, upstage three steps to 4.69, meta one step to 4.54, and deepseek one step to 4.71. Every other family and the fallback clear the floor unlightened, the lowest of them minimax at 4.64. No ground adjusts here, and the chipColor cure an earlier version of this file recorded, with its two adjusted values, stays deleted from the record, because the shipped vendor table carries no such field and needs none. The cure is item F5 on the coherence re-score list, landed. On the scatter itself the marks are comfortable, the monogram letter at 9.36 to 1 on the field disc and the logo glyph at 5.18 to 1.
 
 The split bar's genuine segment takes the seg-genuine slate, a token spent only there and in the anatomy row's abstain slot. Two tokens the converged file carried, accent-bright and red, name values no shipped surface consumes, checked across the stylesheet, the components, and the data tables. They leave the front matter in this rewrite, and the removal stands on the record here. The brand mark is an asset, not a component. Its ground #0A0C0F is an asset constant carried in the mark's own files, outside the token ladder, and its bars stand in ink 1 on a field at the panel radius, the values item F3 on the coherence re-score list set and the shipped mark now carries.
 
@@ -235,7 +248,7 @@ Three collapse breakpoints carry the responsive law, stated here and worked in R
 
 ## Elevation & Depth
 
-Elevation is the surface ladder plus its three shadows, and nothing else. Wells sit flat on panel. Raised elements inside a well take the first shadow step at most. The floating elements, the detail chip, the comparison tray, and the phone foot strip, sit on lift and take the deeper steps. The masthead takes no shadow and no ladder step, and its frost is a material, stated in Colors. A section may not invent its own shadow, tint, or gradient wash.
+Elevation is the surface ladder plus its three shadows. The ground field stated in Colors is the page's one ambient treatment, spent at the page head and at the banded scene boundaries, never inside a well. Wells sit flat on panel. Raised elements inside a well take the first shadow step at most. The floating elements, the detail chip, the comparison tray, and the phone foot strip, sit on lift and take the deeper steps. The masthead takes no shadow and no ladder step, and its frost is a material, stated in Colors. A section may not invent its own shadow, tint, or gradient wash.
 
 The shadow values, extracted with the tokens above.
 
@@ -249,7 +262,7 @@ The radius ladder has three values and a circle. Control radius 6px for controls
 
 ## Components
 
-One sanctioned container holds data. The panel is a bordered card at panel radius on panel ground, and it carries figures and lists alike, the findings, the leader cards, the share card, the result rows, the family rows, the chart wrap, the sync panel, and the below-reading panel, with the population dividers taking the same idea at control radius. A reader scrolling the page meets exactly one container idea. The row list of hairline ruled rows directly on ground, the converged design's list container, is retired law. The shipped result rows are panels standing 8px apart, and each row opens its reading as a ruled region on the soft hairline, the page's only hairline ruled treatment.
+One sanctioned container holds data. The panel is a bordered card at panel radius on panel ground, and it carries figures and lists alike, the findings, the leader cards, the share card, the result rows, the family rows, the sync panel, and the below-reading panel, with the chart wrap seated in the inset step the Colors section assigns it and the population dividers taking the same idea at control radius. A reader scrolling the page meets exactly one container idea. The row list of hairline ruled rows directly on ground, the converged design's list container, is retired law. The shipped result rows are panels standing 8px apart, and each row opens its reading as a ruled region on the soft hairline, the page's only hairline ruled treatment.
 
 The page below the hero is numbered scenes. Each scene opens with a mono eyebrow whose number is spent in the accent, one display claim, and one short lede, and a hairline at the section gap separates the scenes. The scenes stand in page order as 01 Results, 02 Explorer, 03 Findings, and 04 Method. A scene's claim heading is a derived result, stated from the payload the scene presents. A heading that states a figure the payload does not carry fails the evidence law in Data & Motion.
 
@@ -279,7 +292,7 @@ Chart form follows the reader's question. Lookup gets the list twin. Pattern get
 - Invent a number, a count, or a figure the payload does not carry.
 - Repeat a headline figure in the same row's small print.
 - Use glassmorphism as a default material anywhere outside the masthead's one sanctioned frost, a hero metric template as decoration, identical card grids, or eyebrow scaffolding.
-- Add a second accent, a bespoke gradient, or a per section tint.
+- Add a second accent, a bespoke gradient beyond the one ground field stated in Colors, or a per section tint.
 - Put internal language on the public face, no lane names, worktree paths, decision codes, draft markers, or approval states.
 
 ## Responsive Behavior
