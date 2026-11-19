@@ -1270,8 +1270,8 @@ construction), selectable via `checkpoint=`:
 Each checkpoint gets its own `cache_namespace`, so runs never share
 runner cache entries across checkpoints. The model is local, so there
 are no HTTP status codes: a `predict()` failure surfaces as a
-terminal provider error (never retried) and the variant is recorded
-malformed. One honest caveat: the adapter is built from Laya's
+terminal provider error (never retried) and is never recorded as a
+malformed result. One honest caveat: the adapter is built from Laya's
 published API and hasn't been exercised against the real package yet.
 if it answers differently, you'll see terminal provider errors, not
 silent mismeasurement. The `score` answer is assumed 0..1 and clamped;
