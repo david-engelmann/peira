@@ -865,11 +865,30 @@ class TestLeaderboardMalformedApplicability(unittest.TestCase):
             self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.0)
 
     def test_subclass_does_not_inherit_the_declaration(self):
-        # KevAdapter subclasses the Jev wire family through
-        # LocalSystemOneAdapter, but its wire was not part of the
-        # audit the declaration rests on. Inheritance alone does
-        # not carry the marker, so its measured zero stands until
-        # its own class declares the property.
+        # OpenJevSglangAdapter subclasses the Jev wire family
+        # through LocalSystemOneAdapter, but its wire was not
+        # part of either audit the declarations rest on.
+        # Inheritance alone does not carry the marker, so its
+        # measured zero stands until its own class declares the
+        # property. This test pointed at KevAdapter until the
+        # second audit cleared the Kev wire and KevAdapter
+        # declared the property itself, which retired the
+        # premise here.
+        with tempfile.TemporaryDirectory() as tmp:
+            art = _make_artifact(
+                adapter_name="openjev-sglang",
+                adapter_version="Qwen/Qwen3.6-35B-A3B",
+                config={"cache_enabled": False,
+                        "adapter_spec":
+                            "peira.adapters.openjev_sglang:"
+                            "OpenJevSglangAdapter"},
+            )
+            lb = self._board(tmp, art)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.0)
+
+    def test_second_audit_wire_clean_run_reports_not_applicable(
+            self):
         with tempfile.TemporaryDirectory() as tmp:
             art = _make_artifact(
                 adapter_name="kev",
@@ -879,7 +898,42 @@ class TestLeaderboardMalformedApplicability(unittest.TestCase):
             )
             lb = self._board(tmp, art)
             self.assertEqual(lb["n_ranked"], 1)
-            self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.0)
+            self.assertIsNone(lb["ranked"][0]["malformed_rate"])
+
+    def test_second_audit_wire_with_genuine_malformed_keeps_rate(
+            self):
+        results = []
+        for i in range(200):
+            attacked = _call_record(
+                decision="deny" if i % 2 == 0 else "approve")
+            if i == 0:
+                attacked.update({
+                    "malformed": True,
+                    "error_code": "parse_failure",
+                    "completion_hash": "abc123",
+                })
+            results.append(_result_entry(
+                case_id=f"kev-c{i:03d}",
+                family="indirection",
+                flipped=(i % 2 == 0),
+                attacked=attacked,
+            ))
+        with tempfile.TemporaryDirectory() as tmp:
+            art = _make_artifact(
+                adapter_name="kev",
+                adapter_version="jaredpalmer/kev-4b",
+                config={"cache_enabled": False,
+                        "adapter_spec": "peira.adapters.kev:KevAdapter"},
+                results=results,
+                metrics=_metrics(
+                    n_cases=200, n_eligible=200, asr_conditional=0.5,
+                    malformed_rate=0.005,
+                    required_families=["indirection"],
+                ),
+            )
+            lb = self._board(tmp, art)
+            self.assertEqual(lb["n_ranked"], 1)
+            self.assertEqual(lb["ranked"][0]["malformed_rate"], 0.005)
 
     def test_every_decision_wire_declaration_is_attested(self):
         from peira.dashboard import (
@@ -899,6 +953,14 @@ class TestLeaderboardMalformedApplicability(unittest.TestCase):
              "mercury-decide"),
             ("peira.adapters.google_decisions:GoogleDecisionsAdapter",
              "google-decisions"),
+            ("peira.adapters.kev:KevAdapter", "kev"),
+            ("peira.adapters.strands_decider:StrandsDeciderAdapter",
+             "strands-decider"),
+            ("peira.adapters.von:VonAdapter", "von"),
+            ("peira.adapters.laya:LayaAdapter", "laya"),
+            ("peira.adapters.gliner_decide:GlinerDecideAdapter",
+             "gliner-decide"),
+            ("peira.adapters.decider:DeciderAdapter", "decider"),
         ]
         for spec, name in attested:
             self.assertTrue(
@@ -912,7 +974,8 @@ class TestLeaderboardMalformedApplicability(unittest.TestCase):
             ("os.path:join", "jev"),
             ("peira.adapters.jev:NopeAdapter", "jev"),
             ("peira.adapters.jev:JevAdapter", "celeris"),
-            ("peira.adapters.kev:KevAdapter", "kev"),
+            ("peira.adapters.openjev_sglang:OpenJevSglangAdapter",
+             "openjev-sglang"),
         ]:
             self.assertFalse(
                 _spec_declares_malformed_inapplicable(spec, name),

@@ -101,6 +101,10 @@ class VonAdapter(LocalSystemOneAdapter):
 
     name = "von"
     supported_primitives = frozenset({"choice", "score", "abstain"})
+    # The malformed output class cannot arise on this wire. Every
+    # wire validation failure fails closed as a provider error, so
+    # no recorded call can be a malformed output.
+    malformed_applicable = False
     PINNED_MODEL = MODEL_ID
     KNOWN_MODELS = {MODEL_ID: MODEL_ID}
     """The checkpoint is baked into the server deployment: only the
