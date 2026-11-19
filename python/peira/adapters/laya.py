@@ -249,6 +249,10 @@ class LayaAdapter:
     confidence_source = "token-logprob"
     # M-7 longitudinal provenance.
     model_class = "guardrail"
+    # The malformed output class cannot arise on this wire. Every
+    # wire validation failure fails closed as a provider error, so
+    # no recorded call can be a malformed output.
+    malformed_applicable = False
 
     def __init__(
         self,
