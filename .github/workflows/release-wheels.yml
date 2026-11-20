@@ -9,6 +9,11 @@
 # Before the first release, David must register this workflow as a trusted
 # publisher in the PyPI project settings (project -> Settings -> Publishing).
 # Until then, tag pushes build the wheels as artifacts without publishing.
+#
+# On tag pushes the release job also generates a signed SLSA build
+# provenance attestation (actions/attest) over the exact files it
+# publishes to PyPI. Anyone can verify one with
+# `gh attestation verify <file> --owner david-engelmann`.
 
 name: Release wheels
 
@@ -101,11 +106,16 @@ jobs:
     needs: [linux, macos, windows, sdist]
     permissions:
       id-token: write # OIDC trusted publishing; no stored token
+      attestations: write # SLSA build provenance for the published files
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: wheels-*
           path: dist
           merge-multiple: true
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: dist/*
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
