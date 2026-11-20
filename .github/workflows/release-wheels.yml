@@ -10,10 +10,11 @@
 # publisher in the PyPI project settings (project -> Settings -> Publishing).
 # Until then, tag pushes build the wheels as artifacts without publishing.
 #
-# On tag pushes the release job also generates a signed SLSA build
-# provenance attestation (actions/attest) over the exact files it
-# publishes to PyPI. Anyone can verify one with
-# `gh attestation verify <file> --owner david-engelmann`.
+# On tag pushes the release job also generates a signed SLSA
+# provenance attestation (actions/attest) for the exact files it
+# publishes to PyPI, tying each file to this repo and its release
+# workflow. Anyone can verify one with
+# `gh attestation verify <file> --repo david-engelmann/peira`.
 
 name: Release wheels
 
