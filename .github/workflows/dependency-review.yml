@@ -18,9 +18,16 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on the same ref; a newer push makes the older
+# run's result meaningless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   dependency-review:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       # Post the review summary as a PR comment when the review fails.
