@@ -1,0 +1,55 @@
+# OpenSSF Scorecard (GitHub free-tooling pilot, item 2).
+#
+# Scheduled supply-chain posture scan, not a PR check: it runs on push
+# to main and weekly, publishes results to scorecard.dev, and uploads
+# its SARIF to the Security tab. It never gates a merge. The product
+# is the findings list (branch protection, pinned dependencies, token
+# permissions, dangerous workflows, and about twenty checks in all),
+# which becomes a standing per-repo worklist instead of audit
+# archaeology. The action is pinned by full SHA, as its own
+# Pinned-Dependencies check demands.
+name: Scorecard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '30 1 * * 6'
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # Upload the SARIF results to the Security tab.
+      security-events: write
+      # Publish results to scorecard.dev via OIDC.
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@23f22cd43608bae7a1f1fa2603d7314dee9538a5 # v2.6.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to code-scanning
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        with:
+          sarif_file: results.sarif
