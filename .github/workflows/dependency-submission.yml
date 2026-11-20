@@ -1,0 +1,65 @@
+# Dependency submission (GitHub free-tooling follow-on).
+#
+# Keeps the default branch's dependency graph complete for the
+# Python dependencies. GitHub's static graph does not parse uv.lock,
+# so on every push to main this workflow converts uv.lock into a
+# dependency-graph snapshot with scripts/uv_lock_snapshot.py and
+# submits it for the pushed commit. That gives Dependabot alerts
+# coverage of the Python dependencies, and it gives the dependency
+# review on future PRs a real base graph to diff against; the
+# matching head snapshots are submitted by the submit job in
+# dependency-review.yml, under the same correlator. The
+# workflow_dispatch trigger allows a manual repair submission for
+# the dispatched ref.
+#
+# This file travels with dependency-review.yml and
+# scripts/uv_lock_snapshot.py as one template unit.
+name: Dependency submission
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a submission mid-flight; a cancelled run would leave
+# the branch graph stale until the next push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  submit-uv-dependencies:
+    # Converts uv.lock to a dependency-graph snapshot for the pushed
+    # commit and submits it, keeping the default branch's standing
+    # graph complete for the Python dependencies.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # The dependency submission API requires write permission on
+      # the repository.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Submit the uv.lock snapshot for this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          REF: ${{ github.ref }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 scripts/uv_lock_snapshot.py \
+            --lock uv.lock \
+            --repo "$REPO" \
+            --sha "$SHA" \
+            --ref "$REF" \
+            --correlator "uv-lock-submission" \
+            --job-id "$RUN_ID"
