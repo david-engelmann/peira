@@ -27,4 +27,7 @@ jobs:
       - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
         with:
           fail-on-severity: high
+          # The action's own default fails only runtime-scope changes;
+          # the review here covers every scope, development included.
+          fail-on-scopes: runtime, development, unknown
           comment-summary-in-pr: 'on-failure'
