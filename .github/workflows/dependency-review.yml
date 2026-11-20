@@ -7,7 +7,9 @@
 # severity or above in the GitHub Advisory Database. Dependabot alerts
 # only fire after a vulnerable dependency lands; this is the pre-merge
 # counterpart. The full review lands in the job summary on every run;
-# on failure it is also posted as a PR comment.
+# on failure it is also posted as a PR comment, except on fork PRs,
+# whose token is read-only and cannot comment; a fork PR gets the
+# check result and the job summary.
 name: Dependency review
 
 on:
