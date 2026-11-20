@@ -1,0 +1,30 @@
+# Dependency review (GitHub free-tooling pilot, item 1).
+#
+# Advisory only. This workflow is never made a required check; promotion
+# would be a separate decision under the /trunk skip-check house rule.
+# It diffs a PR's dependency graph against the base branch and fails if
+# the PR introduces a dependency with a known vulnerability at high
+# severity or above in the GitHub Advisory Database. Dependabot alerts
+# only fire after a vulnerable dependency lands; this is the pre-merge
+# counterpart. The full review lands in the job summary on every run;
+# on failure it is also posted as a PR comment.
+name: Dependency review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Post the review summary as a PR comment when the review fails.
+      pull-requests: write
+    steps:
+      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: 'on-failure'
