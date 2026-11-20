@@ -6,10 +6,27 @@
 # the PR introduces a dependency with a known vulnerability at high
 # severity or above in the GitHub Advisory Database. Dependabot alerts
 # only fire after a vulnerable dependency lands; this is the pre-merge
-# counterpart. The full review lands in the job summary on every run;
-# on failure it is also posted as a PR comment, except on fork PRs,
-# whose token is read-only and cannot comment; a fork PR gets the
-# check result and the job summary.
+# counterpart.
+#
+# Coverage is exactly what the dependency graph sees. On peira that is
+# Cargo.lock and the workflow YAML files. It does NOT cover the Python
+# dependencies: they are declared in pyproject.toml and uv.lock, and
+# the dependency graph does not parse uv.lock (GitHub's supported
+# ecosystems table lists requirements.txt, Pipfile.lock and
+# poetry.lock for Python, not uv.lock), so a Python-only bump reports
+# no changes and passes. Closing that gap needs a dependency
+# submission step for uv, which is a separate pilot decision.
+#
+# When a run finds dependency changes, the full review lands in the
+# job summary; on failure it is also posted as a PR comment, except on
+# fork PRs, whose token is read-only and cannot comment; a fork PR
+# gets the check result and the job summary. A run that finds no
+# dependency changes writes no summary.
+#
+# This file is the fleet rollout template. It works only on public
+# repositories with the dependency graph enabled; on a private
+# repository without GitHub Advanced Security the action cannot read
+# dependency data and the check fails on every PR.
 name: Dependency review
 
 on:
@@ -40,3 +57,6 @@ jobs:
           # the review here covers every scope, development included.
           fail-on-scopes: runtime, development, unknown
           comment-summary-in-pr: 'on-failure'
+          # Snapshot warnings mean part of the comparison may be
+          # missing; retry rather than pass on partial data.
+          retry-on-snapshot-warnings: true
