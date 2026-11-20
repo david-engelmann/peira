@@ -50,6 +50,7 @@ import sys
 import tomllib
 import urllib.request
 from collections import defaultdict, deque
+from datetime import datetime, timezone
 
 DETECTOR = {
     "name": "uv-lock-dependency-submission",
@@ -200,6 +201,8 @@ def build_snapshot(lock, args):
         "version": 0,
         "sha": args.sha,
         "ref": args.ref,
+        # Required by the submission API: when the snapshot was taken.
+        "scanned": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "job": {"id": args.job_id, "correlator": args.correlator},
         "detector": DETECTOR,
         "metadata": {},
