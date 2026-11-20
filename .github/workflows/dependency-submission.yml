@@ -10,7 +10,7 @@
 # matching head snapshots are submitted by the submit job in
 # dependency-review.yml, under the same correlator. The
 # workflow_dispatch trigger allows a manual repair submission for
-# the current main head.
+# the dispatched ref.
 #
 # This file travels with dependency-review.yml and
 # scripts/uv_lock_snapshot.py as one template unit.
@@ -32,6 +32,9 @@ concurrency:
 
 jobs:
   submit-uv-dependencies:
+    # Converts uv.lock to a dependency-graph snapshot for the pushed
+    # commit and submits it, keeping the default branch's standing
+    # graph complete for the Python dependencies.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
