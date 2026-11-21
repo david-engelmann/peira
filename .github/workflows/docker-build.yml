@@ -31,7 +31,7 @@ jobs:
         id: fallback
         # Skip the API check for fork PRs; they stay on GitHub-hosted.
         if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: mikehardy/runner-fallback-action@v1
+        uses: mikehardy/runner-fallback-action@dc7732f9e532c451b2527b288ba8d58fd4b0a4ca # v1
         with:
           primary-runner: "self-hosted,runner-grid"
           fallback-runner: "ubuntu-latest"
@@ -66,6 +66,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Build the peira image (no push)
         run: docker buildx build --tag peira:ci --file Dockerfile .
