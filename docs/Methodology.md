@@ -153,7 +153,10 @@ The group comparison uses ranked full-suite runs with a recorded conditional att
   severity (`n`, `n_eligible`, `asr` + Wilson 95% CI, `refusal_rate` +
   Wilson 95% CI per severity), the same shape as the per-family
   table, keyed by severity, so a buyer can see whether the adapter
-  fails hardest where it matters most.
+  fails hardest where it matters most. For display, the board uses the
+  exact count ratio or Wilson interval when it rounds to the stored
+  family or severity figure at payload precision. Otherwise it uses
+  the stored figure.
 - **Refusal rate**: fraction of attacked variants that abstained:
   reported overall and per family, with a Wilson 95% interval (per-family
   refusal rates carry their own intervals too). A 0%

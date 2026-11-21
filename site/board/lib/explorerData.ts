@@ -228,14 +228,15 @@ const DIRECTION_LABELS: Array<[string, string]> = [
 function familyDetailOf(
   row: BoardRow,
   famOrder: string[],
+  stats: ReturnType<typeof familiesOf>,
 ): XFamilyDetail[] {
   const fams = recOrEmpty(recOrEmpty(row.detail).families);
   const out: XFamilyDetail[] = [];
   for (const key of famOrder) {
     const f = recOrEmpty(fams[key]);
     if (Object.keys(f).length === 0) continue;
-    const asr = numOrNull(f.asr);
-    const ci = pairOrNull(f.asr_ci95);
+    const asr = stats.get(key)?.asr ?? null;
+    const ci = stats.get(key)?.asrCi95 ?? null;
     const n = numOrNull(f.n);
     const nFlipped = numOrNull(f.n_flipped);
     const nEligible = numOrNull(f.n_eligible);
@@ -271,20 +272,12 @@ function familyDetailOf(
   return out;
 }
 
-const SEVERITY_KEYS: Array<[string, string]> = [
-  ["critical", "Critical"],
-  ["high", "High"],
-  ["medium", "Medium"],
-];
-
-function severityDetailOf(row: BoardRow): XSeverityDetail[] {
+function severityDetailOf(row: BoardRow, stats: ReturnType<typeof severitiesOf>): XSeverityDetail[] {
   const sevs = recOrEmpty(recOrEmpty(row.detail).severities);
   const out: XSeverityDetail[] = [];
-  for (const [key, label] of SEVERITY_KEYS) {
+  for (const { key, label, flipRate, flipCi95 } of stats) {
     const s = recOrEmpty(sevs[key]);
     if (Object.keys(s).length === 0) continue;
-    const rate = numOrNull(s.flip_rate_raw);
-    const ci = pairOrNull(s.flip_rate_ci95);
     const n = numOrNull(s.n);
     const nFlipped = numOrNull(s.n_flipped);
     const nEligible = numOrNull(s.n_eligible);
@@ -302,8 +295,8 @@ function severityDetailOf(row: BoardRow): XSeverityDetail[] {
       meta.push(`summed latency ${fmtInt(Math.round(latTotal / 1000))}s`);
     out.push({
       label,
-      flipText: rate !== null ? fmtPct(rate) : null,
-      ciText: ci !== null ? fmtCi(ci) : null,
+      flipText: flipRate !== null ? fmtPct(flipRate) : null,
+      ciText: flipCi95 !== null ? fmtCi(flipCi95) : null,
       segments,
       metaText: meta.length > 0 ? meta.join(" · ") : null,
     });
@@ -475,15 +468,6 @@ function runFactsOf(row: BoardRow): XRecord["runFacts"] {
   return facts;
 }
 
-function recordOf(row: BoardRow, famOrder: string[]): XRecord {
-  return {
-    families: familyDetailOf(row, famOrder),
-    severities: severityDetailOf(row),
-    calibration: calibrationDetailOf(row),
-    runFacts: runFactsOf(row),
-  };
-}
-
 export interface ExplorerData {
   rows: XRow[];
   familyKeys: string[];
@@ -528,6 +512,7 @@ function shapeRow(
   rankedAxisMax: number,
 ): XRow {
   const fams = familiesOf(row);
+  const severities = severitiesOf(row);
   const famDecomp = familyFlipDecomposition(row);
   const decomp = flipDecomposition(row);
   const cal = calibrationOf(row);
@@ -599,7 +584,7 @@ function shapeRow(
       };
     }),
     weakestFamily: datum.weakestFamily,
-    severities: severitiesOf(row).map((s) => ({
+    severities: severities.map((s) => ({
       label: s.label,
       flipText: s.flipRate !== null ? fmtPct(s.flipRate) : null,
       baseText:
@@ -618,7 +603,12 @@ function shapeRow(
             })),
           },
     provenanceLine: provParts.join(" · "),
-    record: recordOf(row, famOrder),
+    record: {
+      families: familyDetailOf(row, famOrder, fams),
+      severities: severityDetailOf(row, severities),
+      calibration: calibrationDetailOf(row),
+      runFacts: runFactsOf(row),
+    },
     rerunText:
       row.rerun != null
         ? `This result is chained to an earlier run in its record, on ${row.rerun.date}. Its figures are its own standing figures.`

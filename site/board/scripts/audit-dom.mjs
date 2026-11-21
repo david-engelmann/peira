@@ -195,7 +195,12 @@ pass("six widths render both analyses, the explorer and Method, with no overflow
 /* The chart and its linked selections must agree on their population and median. */
 const cohortPage = await browser.newPage();
 await cohortPage.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
-await cohortPage.goto(base, { waitUntil: "networkidle0" });
+await cohortPage.goto(base + "/#explorer?pop=full&mode=rank&kind=general", { waitUntil: "networkidle0" });
+const initialExplorerTop = await cohortPage.$eval("#explorer", el => el.getBoundingClientRect().top);
+const explorerFocused = await cohortPage.evaluate(() => document.activeElement?.id === "explorer");
+if (!explorerFocused || initialExplorerTop < 0 || initialExplorerTop > 150) fail("a shared Explorer view opened outside the viewport");
+else pass("a fresh filtered link lands at the Explorer");
+
 const fullRates = new Map(full.filter(r => r.asr_conditional != null).map(r => [r.run_id, r.asr_conditional]));
 for (const dimension of ["kind", "interface", "serving", "weights", "tier"]) {
   await cohortPage.select("#model-groups select", dimension);
@@ -711,6 +716,14 @@ if (lunaProfiles[0]["Decision interface"] !== "Typed decision questions" ||
     lunaProfiles.some((profile) => profile["Model role"] !== "General-purpose models")) {
   fail(`the Luna comparison misclassified a run: ${JSON.stringify(lunaProfiles)}`);
 } else pass("the Luna comparison shows the same model role and two different interfaces");
+const mixedCompare = new URLSearchParams({
+  pop: "all", mode: "rank", open: "1", sel: modelSlug(leader), pin: modelSlug(slices[0]),
+});
+await page.goto(`${base}/#explorer?${mixedCompare}`, { waitUntil: "networkidle0" });
+await waitFor(page, () => document.querySelector(".compare-deltas")?.textContent.includes("different case sets"));
+if (await page.$(".delta-row") || !(await page.$eval(".tray-delta", el => el.textContent)).includes("not comparable")) {
+  fail("guard and full-suite results displayed a cross-population difference");
+} else pass("a mixed-population comparison keeps the two readings without subtracting their rates");
 await page.close();
 
 /* ---------- ranking transitions ---------- */

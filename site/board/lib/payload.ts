@@ -3,8 +3,8 @@
  *
  * The board renders the payload JSON produced by the Python
  * pipeline and nothing else. Every number shown comes from a
- * payload field, formatted for display. No metric is recomputed
- * here. Derived layout (rank position, tie band geometry) is
+ * payload field or its matching counts, formatted for display.
+ * Derived layout (rank position, tie band geometry) is
  * computed from the payload at build time, following the same
  * definitions the previous renderer used.
  *
@@ -51,6 +51,37 @@ function wilson(hits: number, n: number): [number, number] {
   const half =
     (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / denom;
   return [Math.max(0, center - half), Math.min(1, center + half)];
+}
+
+function storedPrecision(value: number): string {
+  return quantizeHalfUp(decimalString(value), 4);
+}
+
+function proportionCounts(flipped: unknown, eligible: unknown): [number, number] | null {
+  const hits = countOf(flipped);
+  const n = countOf(eligible);
+  return hits === null || n === null || n === 0 || hits > n ? null : [hits, n];
+}
+
+/** Use the count ratio when the stored rate confirms it at payload precision. */
+export function displayCountRate(stored: number | null, flipped: unknown, eligible: unknown): number | null {
+  if (stored === null) return null;
+  const counts = proportionCounts(flipped, eligible);
+  if (counts === null) return stored;
+  const [hits, n] = counts;
+  const rate = hits / n;
+  return storedPrecision(rate) === storedPrecision(stored) ? rate : stored;
+}
+
+/** Use exact Wilson bounds when both stored bounds confirm them. */
+export function displayCountCi(stored: [number, number] | null, flipped: unknown, eligible: unknown): [number, number] | null {
+  if (stored === null) return null;
+  const counts = proportionCounts(flipped, eligible);
+  if (counts === null) return stored;
+  const exact = wilson(...counts);
+  return exact.every((bound, index) => storedPrecision(bound) === storedPrecision(stored[index]))
+    ? exact
+    : stored;
 }
 
 /**
@@ -101,12 +132,7 @@ export function displayCi(row: BoardRow): [number, number] | null {
     if (nf === null) return pair;
     total += nf;
   }
-  const n = countOf(row.n_eligible);
-  if (n === null || n === 0) return pair;
-  const [lo, hi] = wilson(total, n);
-  const q = (v: number) => quantizeHalfUp(decimalString(v), 4);
-  if (q(lo) === q(pair[0]) && q(hi) === q(pair[1])) return [lo, hi];
-  return pair;
+  return displayCountCi(pair, total, row.n_eligible);
 }
 
 export interface FlipDecomposition {

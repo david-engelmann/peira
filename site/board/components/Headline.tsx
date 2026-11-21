@@ -29,7 +29,7 @@ export default function Headline() {
         <p className="study-intro">
           Peira tests each decision twice, first as written and then with adversarial input.
           {best && flips && (
-            <> Even the lowest observed attack success rate was {fmtPct(best.rate)},
+            <> Among ranked full-suite runs, the lowest observed attack success rate was {fmtPct(best.rate)},
               with {fmtInt(flips.flips)} failures in {fmtInt(best.row.n_eligible)} eligible cases.</>
           )}
         </p>

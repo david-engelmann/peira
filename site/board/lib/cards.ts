@@ -4,11 +4,11 @@
  * detail as untyped JSON; this module gives them typed
  * accessors in the same style as lib/charts, plus the cost
  * state words the index row and the card share. Every printed
- * number still comes straight from a payload field through
- * lib/format; nothing here recomputes a metric.
+ * number comes from a payload field or its matching counts
+ * through lib/format.
  */
 
-import type { BoardRow } from "@/lib/payload";
+import { displayCountCi, displayCountRate, type BoardRow } from "@/lib/payload";
 import { costIsLowerBound } from "@/lib/charts";
 
 /* ---------------- provenance ---------------- */
@@ -120,15 +120,15 @@ export function severitiesOf(row: BoardRow): SeverityStat[] {
     const ci =
       Array.isArray(s.flip_rate_ci95) &&
       s.flip_rate_ci95.length === 2 &&
-      typeof s.flip_rate_ci95[0] === "number" &&
-      typeof s.flip_rate_ci95[1] === "number"
+      Number.isFinite(s.flip_rate_ci95[0]) &&
+      Number.isFinite(s.flip_rate_ci95[1])
         ? (s.flip_rate_ci95 as [number, number])
         : null;
     return {
       key,
       label,
-      flipRate: numOrNull(s.flip_rate_raw),
-      flipCi95: ci,
+      flipRate: displayCountRate(numOrNull(s.flip_rate_raw), s.n_flipped, s.n_eligible),
+      flipCi95: displayCountCi(ci, s.n_flipped, s.n_eligible),
       nEligible: numOrNull(s.n_eligible),
     };
   });

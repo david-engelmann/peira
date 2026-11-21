@@ -11,9 +11,9 @@ import ts from "typescript";
 const board = fileURLToPath(new URL("../", import.meta.url));
 const readPayload = () => JSON.parse(readFileSync(join(board, "data/payload.json"), "utf8"));
 
-// Transpile the production component for server rendering with a scoped loader.
+// Transpile production code with a scoped loader.
 // The only substitutions are the payload input and the style-only import.
-function renderStudy(payload) {
+function loadBoard(payload, entry) {
   const modules = new Map();
   function load(filename) {
     if (modules.has(filename)) return modules.get(filename);
@@ -31,6 +31,7 @@ function renderStudy(payload) {
     const requireSource = (id) => {
       if (id.endsWith(".css")) return {};
       if (id === "@/data/payload.json") return payload;
+      if (id.endsWith(".json")) return require(id);
       if (id.startsWith("@/")) return load(join(board, `${id.slice(2)}.ts`));
       if (id.startsWith(".")) return load(join(dirname(filename), `${id}.ts`));
       return require(id);
@@ -39,7 +40,11 @@ function renderStudy(payload) {
     modules.set(filename, module.exports);
     return module.exports;
   }
-  const StudyFindings = load(join(board, "components/StudyFindings.tsx")).default;
+  return load(join(board, entry));
+}
+
+function renderStudy(payload) {
+  const StudyFindings = loadBoard(payload, "components/StudyFindings.tsx").default;
   return renderToStaticMarkup(createElement(StudyFindings));
 }
 
@@ -79,4 +84,42 @@ test("missing family records suppress the pooled finding while the cost finding 
   const html = renderStudy(payload);
   assert.doesNotMatch(html, /id="study-families-heading"/);
   assert.match(html, /id="study-cost-heading"/);
+});
+
+test("explorer family and severity rates use sealed counts when they agree with stored rates", () => {
+  const { explorerData } = loadBoard(readPayload(), "lib/explorerData.ts");
+  const { rows } = explorerData();
+  const argon = rows.find(row => row.slug === "gemini-4-argon");
+  const family = argon.record.families.find(f => f.key === "cryptographic_payload");
+  assert.match(family.countsText, /17 flipped of 420 eligible/);
+  assert.equal(family.asrText, "4.0%");
+  assert.equal(argon.families.find(f => f.key === family.key).asr, 17 / 420);
+
+  const sol = rows.find(row => row.slug === "gpt-6-1-sol");
+  const severity = sol.record.severities.find(s => s.label === "Medium");
+  assert.ok(severity.segments.includes("245 flipped of 2,017 eligible"));
+  assert.equal(severity.flipText, "12.1%");
+});
+
+test("explorer preserves stored rates and intervals when the counts disagree", () => {
+  const payload = readPayload();
+  const argon = payload.ranked.find(row => row.adapter_version === "gemini-4-argon");
+  const rawFamily = argon.detail.families.cryptographic_payload;
+  rawFamily.asr = 0.05;
+  rawFamily.asr_ci95 = [0.01, 0.09];
+  const sol = payload.ranked.find(row => row.adapter_version === "gpt-6.1-sol");
+  const rawSeverity = sol.detail.severities.medium;
+  rawSeverity.flip_rate_raw = 0.11;
+  rawSeverity.flip_rate_ci95 = [0.09, 0.13];
+
+  const { explorerData } = loadBoard(payload, "lib/explorerData.ts");
+  const { rows } = explorerData();
+  const family = rows.find(row => row.runId === argon.run_id).record.families
+    .find(f => f.key === "cryptographic_payload");
+  assert.equal(family.asrText, "5.0%");
+  assert.equal(family.ciText, "1.0% to 9.0%");
+  const severity = rows.find(row => row.runId === sol.run_id).record.severities
+    .find(s => s.label === "Medium");
+  assert.equal(severity.flipText, "11.0%");
+  assert.equal(severity.ciText, "9.0% to 13.0%");
 });

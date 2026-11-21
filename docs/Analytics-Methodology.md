@@ -55,6 +55,8 @@ The board’s cost plot includes all ranked full-suite results with a positive r
 
 Read each tick as one ranked full-suite run and the diamond as the median of those run-level conditional rates. The displayed count tells you how many runs contributed. A pair of evaluations of one model through different APIs contributes two observations. The group medians describe this set of tested configurations. Differences alone cannot tell you how changing hosting, weight access or model design would affect a particular model. Select a group name to inspect its individual results and intervals.
 
+In the explorer’s family and severity details, rates and Wilson intervals use the exact counted-flip and eligible-case totals when those totals reproduce the stored figures at payload precision. This lets the board round the displayed percentages once.
+
 ### ASR (unconditional)
 
 Definition. The fraction of all attacked cases that flipped,

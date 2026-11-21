@@ -320,6 +320,10 @@ function deltaText(
   return fmt(b - a);
 }
 
+function sameCasePopulation(a: XRow, b: XRow) {
+  return a.nCases === b.nCases && (a.kind === "slice") === (b.kind === "slice");
+}
+
 function CompareReading({
   sel,
   pin,
@@ -362,7 +366,8 @@ function CompareReading({
        * run served locally and a run with no recorded cost are
        * not zero priced, so neither side may enter a
        * subtraction that would print one. */
-      sel.costValue !== null &&
+      sel.costKind === "amount" && pin.costKind === "amount" &&
+        sel.costValue !== null &&
         pin.costValue !== null &&
         sel.costValue > 0 &&
         pin.costValue > 0
@@ -387,7 +392,10 @@ function CompareReading({
           <ReadingBody row={sel} />
         </div>
         <div className="compare-deltas" aria-label="Differences">
-          {rows.map(([label, a, b, delta]) => (
+          {!sameCasePopulation(sel, pin) && (
+            <p>These runs used different case sets ({fmtInt(sel.nCases)} and {fmtInt(pin.nCases)} cases). Each column shows its own measurements.</p>
+          )}
+          {sameCasePopulation(sel, pin) && rows.map(([label, a, b, delta]) => (
             <div className="delta-row" key={label}>
               <span className="micro">{label}</span>
               <span className="delta-pair">
@@ -589,7 +597,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   }, [bySlug, opener]);
 
   useEffect(() => {
-    const apply = (scroll: boolean) => {
+    const apply = (initial: boolean) => {
       const { patch, open } = parseHash();
       if (Object.keys(patch).length === 0) return;
       touched.current = false;
@@ -598,12 +606,11 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       setHoverId(null);
       setChipId(null);
       setBrush(null);
-      if (scroll || window.location.hash.startsWith("#result=")) {
-        sectionRef.current?.scrollIntoView({ block: "start" });
-      }
+      sectionRef.current?.focus({ preventScroll: true });
+      sectionRef.current?.scrollIntoView({ block: "start", behavior: initial ? "instant" : "auto" });
     };
-    apply(false);
-    const onHash = () => apply(true);
+    apply(true);
+    const onHash = () => apply(false);
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, [parseHash]);
@@ -761,7 +768,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   };
 
   return (
-    <section className="explorer scene" id="explorer" ref={sectionRef} aria-labelledby="explorer-title">
+    <section className="explorer scene" id="explorer" tabIndex={-1} ref={sectionRef} aria-labelledby="explorer-title">
       <div className="sechead">
         <h2 id="explorer-title">Explore the results</h2>
         <p className="cap">
@@ -1024,7 +1031,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
             {selRow.name} against {pinRow.name}
           </span>
           <span className="tray-delta">
-            {selRow.asr !== null && pinRow.asr !== null
+            {sameCasePopulation(selRow, pinRow) && selRow.asr !== null && pinRow.asr !== null
               ? `${fmtDeltaPct(pinRow.asr - selRow.asr)} attack success`
               : "Rates not comparable"}
           </span>
