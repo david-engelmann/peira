@@ -769,6 +769,7 @@ button.xh.on { color: var(--accent); }
 .colophon { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 24px; color: var(--ink-3); font-size: 13.5px; }
 .colophon p { margin: 0 0 8px; }
 .model-redirect { padding-top: 64px; }
+.route-brand { display: inline-flex; align-items: center; min-height: 44px; margin-bottom: 24px; color: var(--ink); }
 
 /* The rank grid collapses before it can squeeze. Below
    this width the benign and calibration columns leave the

@@ -15,6 +15,8 @@ a permanent link with its own share preview.
 
 The README shows the interface in both color schemes. After a build, run `node scripts/capture-prototype.mjs --readme` with `PUPPETEER_EXECUTABLE_PATH` pointing to Chrome to refresh the overview, the explorer images and the repository social preview. Upload the generated `.github/social-preview.png` under the repository’s Settings, in Social preview. The live board and result pages serve their own generated cards.
 
+The browser and link-preview icons use the symbol in `app/icon.svg`. When the symbol changes, export a transparent 96 px PNG to `app/icon1.png` and a 16/32/48 px ICO to `app/favicon.ico`. For `public/apple-touch-icon.png`, center the 144 px symbol on a 180 px square in the share card’s navy background. The DOM audit checks discovery and decoding for each format.
+
 ## Building
 
 Run `npm install` once, then `npm run build`. The build

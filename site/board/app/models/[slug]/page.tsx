@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import PeiraBrand from "@/components/PeiraBrand";
 import {
   boardGroups,
   duplicateShortNames,
@@ -72,12 +73,10 @@ export default async function ModelAddress({
     row !== undefined && duplicateShortNames(rows).has(shortName(row));
   return (
     <main className="page model-redirect">
-      <p className="micro">peira · Model address</p>
+      <a className="route-brand" href="/" aria-label="Peira home"><PeiraBrand /></a>
       <h1>{name ?? "This result now opens in the explorer"}</h1>
       {row && shared && <p className="micro">{wireWords(row.wire)}</p>}
       <p className="cap">
-        The board's model addresses open the explorer with the result
-        selected and its reading open.{" "}
         <a href={target}>Open this result in the explorer</a>
       </p>
       <script

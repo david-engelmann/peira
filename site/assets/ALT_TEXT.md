@@ -56,8 +56,6 @@ recording.
 
 Found in repo root `assets/`
 
-A static social preview card for the peira repository. A marble
-background carries the word peira in large serif type, the line "the
-empirical trial for decision models" beneath it, an ochre rule, and a
-footer line reading "adversarial-robustness benchmark for LLM
-guardrails, MIT slash CC-BY-4.0". Decorative, no data.
+Peira's folded P and white wordmark sit on a navy background with a
+cyan top edge. The card reads "An open-source benchmark for decision
+robustness" and "peiratrial.dev".

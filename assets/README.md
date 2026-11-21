@@ -1,8 +1,10 @@
 # assets/
 
-Brand assets land here:
+[`social-preview.svg`](social-preview.svg) is Peira's static repository
+preview. Regenerate it from the repository root with
+`python3 scripts/generate_social_preview.py`.
 
-- `wordmark.svg` - text-based "peira" + tagline.
-- `social-preview.png` - repo/README header image.
-- `demo.gif` - recorded from a real terminal session running the README
-  quickstart verbatim. No staged output.
+The README uses the [light](../.github/board/peira-light.svg) and
+[dark](../.github/board/peira-dark.svg) Peira signatures. The
+[board README](../site/board/README.md) covers the separate GitHub social
+preview PNG.

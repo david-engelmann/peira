@@ -32,6 +32,7 @@ import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const signature = readFileSync(path.join(root, "../../.github/board/peira-dark.svg"), "utf8").trim();
 const payload = JSON.parse(
   readFileSync(path.join(root, "data", "payload.json"), "utf8"),
 );
@@ -483,8 +484,10 @@ const html = `<!doctype html>
 body { width: 1280px; height: 640px; background: ${palette.ground}; color: ${CARD_INK};
   box-shadow: inset 0 5px ${palette.subjectFill};
   font-family: "Archivo", system-ui, sans-serif; overflow: hidden; }
-.word { font-size: 26px; font-weight: 700; letter-spacing: 0.34em; color: ${CARD_INK}; }
-.mast { display: flex; align-items: baseline; justify-content: space-between; }
+.word { color: ${CARD_INK}; }
+.word > svg { display: block; width: auto; height: 30px; }
+.word svg[fill] { fill: currentColor; }
+.mast { display: flex; align-items: center; justify-content: space-between; }
 .mastr { font-family: "Liberation Mono", "DejaVu Sans Mono", monospace; font-size: 13px; font-weight: 600; letter-spacing: 0.055em; color: ${palette.quiet}; text-transform: uppercase; }
 .foot { position: absolute; left: 48px; right: 48px; bottom: 22px; font-size: 17px; color: ${palette.quiet}; display: flex; justify-content: space-between; }
 .mono { font-weight: 700; text-anchor: middle; dominant-baseline: central; }
@@ -504,7 +507,7 @@ h1 { font-size: 52px; font-weight: 700; letter-spacing: -0.02em; margin-top: 10p
 ${bSvg}
 <div class="fallback" id="social-fallback" hidden></div>
 <div class="head">
-  <div class="mast"><span class="word">PEIRA</span><span class="mastr">Decision models under attack &middot; ${results} results</span></div>
+  <div class="mast"><span class="word">${signature}</span><span class="mastr">Decision models under attack &middot; ${results} results</span></div>
   <h1>The priciest model was the easiest to flip</h1>
   <p class="sub">The two ends of the cost story, each a full run of the suite.</p>
 </div>
