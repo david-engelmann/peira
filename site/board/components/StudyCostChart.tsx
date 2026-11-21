@@ -27,12 +27,42 @@ interface CostPoint {
 const marker = (point: CostPoint) =>
   (point.highlighted ? " study-scatter-highlight" : "") + ` study-scatter-${point.coverage}`;
 
+const HIT_RADIUS = 22;
+const REPEAT_RADIUS = 5;
+
+function CostInterval({ left, top, bottom, rate, className }: {
+  left: number;
+  top: number;
+  bottom: number;
+  rate: number;
+  className: string;
+}) {
+  const center = 18;
+  const stem = center + (left > 82 ? -15 : 15);
+  return (
+    <svg
+      aria-hidden="true"
+      className={`study-scatter-whisker${className}`}
+      style={{ left: `${left}%` }}
+      width={center * 2}
+      height="100%"
+      stroke="currentColor"
+    >
+      <line x1={stem} x2={stem} y1={`${top}%`} y2={`${bottom}%`} />
+      <line x1={stem - 2} x2={stem + 2} y1={`${top}%`} y2={`${top}%`} />
+      <line x1={stem - 2} x2={stem + 2} y1={`${bottom}%`} y2={`${bottom}%`} />
+      <line x1={center} x2={stem} y1={`${rate}%`} y2={`${rate}%`} />
+    </svg>
+  );
+}
+
 export default function StudyCostChart({ points }: { points: CostPoint[] }) {
   const [coverage, setCoverage] = useState<"all" | Coverage>("all");
   const [zoomed, setZoomed] = useState(false);
   const [intervals, setIntervals] = useState(true);
   const [selectedId, setSelectedId] = useState(points.find(point => point.highlighted && point.coverage === "complete")?.id);
   const pointButtons = useRef(new Map<string, HTMLButtonElement>());
+  const lastClick = useRef<{ left: number; top: number; id: string } | null>(null);
   const instructionsId = useId();
 
   const sorted = [...points].sort((a, b) => a.cost - b.cost);
@@ -83,25 +113,32 @@ export default function StudyCostChart({ points }: { points: CostPoint[] }) {
     }
     event.preventDefault();
     if (next) {
+      lastClick.current = null;
       setSelectedId(next.id);
       pointButtons.current.get(next.id)?.focus({ preventScroll: true });
     }
   }
 
-  function inspectNearest(event: MouseEvent<HTMLDivElement>) {
+  function inspectAtPointer(event: MouseEvent<HTMLDivElement>, clicked = false) {
     const plot = event.currentTarget.getBoundingClientRect();
-    let nearest: CostPoint | undefined;
-    let distance = 22;
-    for (const { point, left, bottom } of positioned) {
-      const dx = event.clientX - plot.left - plot.width * left / 100;
-      const dy = plot.bottom - event.clientY - plot.height * bottom / 100;
-      const offset = Math.hypot(dx, dy);
-      if (offset < distance) {
-        nearest = point;
-        distance = offset;
-      }
+    const left = event.clientX - plot.left;
+    const top = event.clientY - plot.top;
+    const previous = lastClick.current;
+    const repeated = previous && Math.hypot(left - previous.left, top - previous.top) <= REPEAT_RADIUS;
+    if (!clicked && repeated) return;
+    if (!repeated) lastClick.current = null;
+    const hits = positioned.map(item => ({
+      point: item.point,
+      distance: Math.hypot(left - plot.width * item.left / 100, top - plot.height * (1 - item.bottom / 100)),
+    })).filter(hit => hit.distance <= HIT_RADIUS).sort((a, b) => a.distance - b.distance);
+    if (!hits.length) return;
+    const index = repeated ? hits.findIndex(({ point }) => point.id === previous.id) : -1;
+    const { point } = hits[(index + 1) % hits.length];
+    setSelectedId(point.id);
+    if (clicked) {
+      lastClick.current = { left, top, id: point.id };
+      pointButtons.current.get(point.id)?.focus({ preventScroll: true });
     }
-    if (nearest) setSelectedId(nearest.id);
   }
 
   return (
@@ -109,13 +146,19 @@ export default function StudyCostChart({ points }: { points: CostPoint[] }) {
       <div className="study-scatter-controls">
         <label className="study-scatter-coverage">
           Cost coverage
-          <select value={coverage} onChange={event => setCoverage(event.target.value as "all" | Coverage)}>
+          <select value={coverage} onChange={event => {
+            lastClick.current = null;
+            setCoverage(event.target.value as "all" | Coverage);
+          }}>
             <option value="all">All recorded costs</option>
             {coverageOptions.map(option => <option key={option} value={option}>{coverageLabels[option]}</option>)}
           </select>
         </label>
         {canZoom && (
-          <button type="button" aria-pressed={zoomed} onClick={() => setZoomed(!zoomed)}>
+          <button type="button" aria-pressed={zoomed} onClick={() => {
+            lastClick.current = null;
+            setZoomed(!zoomed);
+          }}>
             Zoom below $1
           </button>
         )}
@@ -136,11 +179,16 @@ export default function StudyCostChart({ points }: { points: CostPoint[] }) {
           role="group"
           aria-label="Attack success by recorded serving cost on a logarithmic scale"
           aria-describedby={instructionsId}
-          onPointerMove={event => { if (event.pointerType === "mouse") inspectNearest(event); }}
-          onClick={event => { if (event.detail > 0) inspectNearest(event); }}
+          onPointerMove={event => {
+            if (event.pointerType === "mouse" && !event.currentTarget.querySelector("button:focus-visible")) {
+              inspectAtPointer(event);
+            }
+          }}
+          onClick={event => { if (event.detail > 0) inspectAtPointer(event, true); }}
         >
           <span className="study-scatter-instructions" id={instructionsId}>
             Use the arrow keys to inspect results in cost order, or Home and End to jump to the lowest and highest costs.
+            Click or tap the same spot again to cycle through overlapping results.
           </span>
           <div className="study-scatter-grid" aria-hidden="true">
             {yTicks.map((tick) => (
@@ -158,10 +206,12 @@ export default function StudyCostChart({ points }: { points: CostPoint[] }) {
           {positioned.map(({ point, left, bottom }) => (
             <div key={point.id}>
               {intervals && point.ci && (
-                <span
-                  aria-hidden="true"
-                  className={`study-scatter-whisker${marker(point)}`}
-                  style={{ left: `${left}%`, bottom: `${y(point.ci[0])}%`, height: `${y(point.ci[1] - point.ci[0])}%` }}
+                <CostInterval
+                  left={left}
+                  top={100 - y(point.ci[1])}
+                  bottom={100 - y(point.ci[0])}
+                  rate={100 - bottom}
+                  className={marker(point)}
                 />
               )}
               <button
@@ -178,7 +228,11 @@ export default function StudyCostChart({ points }: { points: CostPoint[] }) {
                 onFocus={() => setSelectedId(point.id)}
                 onClick={event => { if (event.detail === 0) setSelectedId(point.id); }}
                 onKeyDown={event => moveFocus(event, point.id)}
-              />
+              >
+                <span className="study-scatter-badge" aria-hidden="true">
+                  <Mark mark={point.mark} size={18} tinted />
+                </span>
+              </button>
             </div>
           ))}
         </div>
@@ -190,7 +244,14 @@ export default function StudyCostChart({ points }: { points: CostPoint[] }) {
           <li key={option}><span className={`study-scatter-swatch study-scatter-${option}`} aria-hidden="true" />{coverageLabels[option]}</li>
         ))}
         {showHighlights && <li><span className="study-scatter-swatch study-scatter-highlight" aria-hidden="true" />Discussed results</li>}
-        {intervals && hasIntervals && <li><span className="study-scatter-interval" aria-hidden="true" />95% Wilson interval</li>}
+        {intervals && hasIntervals && (
+          <li>
+            <svg className="study-scatter-interval" width="16" height="14" aria-hidden="true">
+              <path d="M12 1v12M10 1h4M10 13h4M2 7h10" fill="none" stroke="currentColor" />
+            </svg>
+            95% Wilson interval
+          </li>
+        )}
       </ul>
 
       {current && (

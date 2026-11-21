@@ -138,7 +138,7 @@ function contrastOf(a: Rgb, b: Rgb): number {
 }
 
 /** The color the chip's mark or monogram letter is drawn in. */
-export function chipMarkColor(family: VendorFamily, theme: keyof typeof CHIP_PANELS): string {
+export function chipMarkColor(family: Pick<VendorFamily, "color">, theme: keyof typeof CHIP_PANELS): string {
   const base = rgbOf(family.color);
   const ground = mixSrgb(base, rgbOf(CHIP_PANELS[theme]), CHIP_TINT_SHARE);
   const endpoint: Rgb = theme === "light" ? [0, 0, 0] : [255, 255, 255];

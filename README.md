@@ -1,4 +1,11 @@
-# Peira
+<h1>
+  <a href="https://peiratrial.dev/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset=".github/board/peira-dark.svg">
+      <img src=".github/board/peira-light.svg" width="242" alt="Peira">
+    </picture>
+  </a>
+</h1>
 
 Peira measures how often an AI model changes a correct decision when the same case comes back with adversarial input. Each run pairs the original and altered prompts, then records the decisions, uncertainty and serving cost.
 
@@ -20,12 +27,24 @@ The benchmark’s latest run is dated November 18, 2026. The study covers **4,70
 
 The explorer keeps each model and its interface visible. GPT-6 Luna, for example, ran through both a typed Decisions API and Chat Completions. Switch between run cost and benign accuracy, inspect individual results, or filter for specialists, local inference and downloadable weights. Guard models have a separate ranking on the abstention subset. [Open the explorer](https://peiratrial.dev/#explorer) · [Read the scoring method](https://peiratrial.dev/#method)
 
+<a href="https://peiratrial.dev/#study-cost-heading">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/board/cost-dark.webp">
+    <img src=".github/board/cost-light.webp" alt="Attack success versus serving cost for ranked runs. Each point carries its provider’s mark. The chart distinguishes fully priced runs from cost lower bounds.">
+  </picture>
+</a>
+
+<details>
+<summary>View the filtered explorer</summary>
+
 <a href="https://peiratrial.dev/#explorer?pop=full&amp;mode=chart&amp;kind=general&amp;serving=hosted">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/board/explorer-dark.webp">
     <img src=".github/board/explorer-light.webp" alt="Hosted general-purpose models in the explorer. Each point shows one full-suite run’s attack success and recorded serving cost. The list links each point to its run record.">
   </picture>
 </a>
+
+</details>
 
 ## Contents
 

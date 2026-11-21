@@ -8,7 +8,7 @@
  *   CAPTURE_DIR                output directory (default ./captures)
  */
 import { createServer } from "node:http";
-import { readFileSync, existsSync, statSync, mkdirSync, copyFileSync } from "node:fs";
+import { readFileSync, existsSync, statSync, mkdirSync, copyFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -76,11 +76,31 @@ if (readmeOnly) {
       ]);
       await page.goto(base, { waitUntil: "networkidle0" });
       await page.evaluate(() => document.fonts.ready);
+      const signature = await page.$eval(".brand .peira-signature", async el => {
+        const image = el.querySelector("img");
+        const response = await fetch(image.src);
+        if (!response.ok) throw Error("Unable to load the Peira symbol");
+        const symbol = new DOMParser().parseFromString(await response.text(), "image/svg+xml").documentElement;
+        const letters = el.querySelector("svg").cloneNode(true);
+        const { width, height } = el.getBoundingClientRect();
+        const bounds = el.querySelector("svg").getBoundingClientRect();
+        const frame = el.getBoundingClientRect();
+        symbol.setAttribute("width", image.width);
+        symbol.setAttribute("height", image.height);
+        letters.setAttribute("x", bounds.x - frame.x);
+        letters.setAttribute("y", bounds.y - frame.y);
+        letters.setAttribute("fill", getComputedStyle(el).color);
+        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"><title>Peira</title>${symbol.outerHTML}${letters.outerHTML}</svg>\n`;
+      });
+      writeFileSync(path.join(capDir, `peira-${theme}.svg`), signature);
       const bottom = await page.$eval("#results", el => el.getBoundingClientRect().bottom);
       await page.screenshot({
         path: path.join(capDir, `overview-${theme}.webp`), quality: 92,
         clip: { x: 0, y: 0, width: 1200, height: Math.ceil(bottom) },
       });
+      const costFigure = await page.$(".study-finding-cost .study-finding-figure");
+      await costFigure.evaluate(el => window.scrollBy({ top: el.getBoundingClientRect().top - 90, behavior: "instant" }));
+      await costFigure.screenshot({ path: path.join(capDir, `cost-${theme}.webp`), quality: 92 });
       await page.evaluate(() => { location.hash = "explorer?pop=full&mode=chart&kind=general&serving=hosted"; });
       await page.waitForFunction(() => document.querySelector("#explorer-kind")?.value === "general"
         && document.querySelector("#explorer-serving")?.value === "hosted");

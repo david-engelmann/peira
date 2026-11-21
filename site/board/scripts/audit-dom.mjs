@@ -233,6 +233,16 @@ if (bars.length > 1) {
     pass("keyboard and step controls link the inspected field result to its record");
   }
 }
+const costMarks = await overview.$$eval(".study-scatter-point", (points) => points.map(point => {
+  const badge = point.querySelector(".study-scatter-badge");
+  const use = badge?.querySelector("use");
+  const symbol = use?.getAttribute("href");
+  return Boolean(symbol
+    ? document.getElementById(symbol.slice(1)) && use.getBBox().width > 0
+    : badge?.querySelector(".xmark-letter")?.textContent.trim());
+}));
+if (!costMarks.length || costMarks.some(mark => !mark)) fail("every cost point must display its provider mark");
+else pass("the cost points display their shared provider marks");
 await overview.select(".study-scatter-coverage select", "complete");
 await overview.click(".study-scatter-controls button");
 const costRows = await overview.$$eval(".study-cost-data tbody tr", entries =>
@@ -903,6 +913,25 @@ const ordered = await phone.evaluate(() => {
 });
 if (!ordered) fail("phone section order differs from the desktop study");
 else pass("phone preserves the study reading order");
+const costPlot = await phone.$(".study-scatter-plot");
+await costPlot.evaluate(el => el.scrollIntoView({ block: "center", behavior: "instant" }));
+await settleOn(costPlot);
+const costTap = await costPlot.evaluate(plot => {
+  const centers = [...plot.querySelectorAll(".study-scatter-point")].map(point => {
+    const { x, y, width, height } = point.getBoundingClientRect();
+    return { x: x + width / 2, y: y + height / 2 };
+  });
+  return centers.find((a, index) => centers.some((b, other) =>
+    index !== other && Math.hypot(a.x - b.x, a.y - b.y) < 10));
+});
+if (costTap) {
+  await phone.touchscreen.tap(costTap.x, costTap.y);
+  const firstCost = await phone.$eval(".study-scatter-readout a", link => link.hash);
+  await phone.touchscreen.tap(costTap.x, costTap.y);
+  const secondCost = await phone.$eval(".study-scatter-readout a", link => link.hash);
+  if (firstCost === secondCost) fail("repeating a tap must inspect an overlapping cost result");
+  else pass("repeated taps inspect overlapping cost results on the phone");
+} else fail("the phone cost chart lacks a pair of overlapping points for the touch check");
 await phone.evaluate(() => document.querySelector(".explorer")?.scrollIntoView({ behavior: "instant" }));
 const phoneChart = await phone.evaluate(() => {
   const chart = document.querySelector("svg.chart");

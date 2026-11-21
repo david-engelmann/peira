@@ -45,8 +45,8 @@ body { background: var(--ground); }
   background: color-mix(in srgb, var(--ground) 90%, transparent);
 }
 .study .masthead.scrolled { background: var(--ground); border-color: var(--line); }
-.study .brand { gap: 9px; }
-.study .brand-name { font-size: 24px; letter-spacing: -.055em; }
+.study .brand { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink); }
+.peira-signature > img, .peira-signature > svg { display: block; }
 .study .mastnav { margin-left: auto; gap: 3px; }
 .study .mastnav a {
   padding-inline: 11px; border-radius: 8px; color: var(--ink-2);

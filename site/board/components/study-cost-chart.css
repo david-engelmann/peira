@@ -128,23 +128,51 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.study-scatter-point::after,
+.study-scatter-badge,
 .study-scatter-swatch {
-  content: "";
-  width: 9px;
-  height: 9px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  border: 1px solid var(--inset);
-  background-color: var(--scatter-marker);
   pointer-events: none;
 }
 
+.study-scatter-badge::after,
+.study-scatter-swatch {
+  border: 1px solid var(--scatter-marker);
+}
+
+.study-scatter-badge::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.study-scatter-badge .xmark {
+  border: 0;
+  border-radius: 50%;
+}
+
+.study-scatter-badge .xmark svg {
+  width: 14px;
+  height: 14px;
+}
+
+.study-scatter-swatch {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  background: var(--inset);
+}
+
 .study-scatter-whisker {
-  width: 3px;
+  top: 0;
+  overflow: visible;
   transform: translateX(-50%);
-  background: linear-gradient(var(--scatter-marker), var(--scatter-marker)) center / 1px 100% no-repeat;
-  border-block: 1px solid var(--scatter-marker);
-  opacity: .75;
+  color: var(--scatter-marker);
   pointer-events: none;
 }
 
@@ -156,25 +184,20 @@
   z-index: 2;
 }
 
-.study-scatter-point.study-scatter-highlight::after,
+.study-scatter-highlight .study-scatter-badge,
 .study-scatter-swatch.study-scatter-highlight {
-  width: 13px;
-  height: 13px;
+  outline: 2px solid var(--scatter-signal);
+  outline-offset: 1px;
 }
 
-.study-scatter-point.study-scatter-lower-bound::after,
+.study-scatter-lower-bound .study-scatter-badge::after,
 .study-scatter-swatch.study-scatter-lower-bound {
-  border: 1px solid var(--scatter-marker);
-  background: var(--inset);
+  border-style: dashed;
 }
 
-.study-scatter-point.study-scatter-highlight.study-scatter-lower-bound::after {
-  border-width: 2px;
-}
-
-.study-scatter-point.study-scatter-unknown::after,
+.study-scatter-unknown .study-scatter-badge::after,
 .study-scatter-swatch.study-scatter-unknown {
-  border-radius: 1px;
+  border-radius: 2px;
   transform: rotate(45deg);
 }
 
@@ -182,15 +205,15 @@
   z-index: 3;
 }
 
-.study-scatter-point[aria-pressed="true"]::after {
+.study-scatter-point[aria-pressed="true"] {
   outline: 1px solid var(--ink);
-  outline-offset: 2px;
+  outline-offset: -1px;
 }
 
 .study-scatter-point:focus-visible {
   z-index: 4;
-  outline: 2px solid var(--scatter-signal);
-  outline-offset: -5px;
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
 }
 
 .study-scatter-axis {
@@ -214,12 +237,8 @@
 }
 
 .study-scatter-interval {
-  display: block;
-  height: 12px;
-  width: 5px;
-  margin-inline: 2px;
-  border-block: 1px solid var(--scatter-marker);
-  background: linear-gradient(var(--scatter-marker), var(--scatter-marker)) center / 1px 100% no-repeat;
+  flex: 0 0 auto;
+  color: var(--scatter-marker);
 }
 
 .study-scatter-readout {
@@ -354,16 +373,21 @@
 }
 
 @media (forced-colors: active) {
-  .study-scatter-point::after,
-  .study-scatter-swatch {
+  .study-scatter {
     --scatter-marker: CanvasText;
-    forced-color-adjust: none;
-    background-color: CanvasText;
-    border-color: Canvas;
+    --scatter-signal: Highlight;
   }
 
-  .study-scatter-point.study-scatter-lower-bound::after,
-  .study-scatter-swatch.study-scatter-lower-bound { background-color: Canvas; }
-  .study-scatter-point:focus-visible,
-  .study-scatter-point[aria-pressed="true"]::after { outline-color: Highlight; }
+  .study-scatter-badge,
+  .study-scatter-swatch,
+  .study-scatter-badge .xmark {
+    forced-color-adjust: none;
+    background-color: Canvas;
+    color: CanvasText;
+  }
+
+  .study-scatter-whisker,
+  .study-scatter-interval { forced-color-adjust: none; }
+
+  .study-scatter-point:focus-visible { outline-color: Highlight; }
 }

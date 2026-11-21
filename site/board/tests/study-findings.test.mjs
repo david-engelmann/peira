@@ -138,6 +138,48 @@ test("the study plots all priced ranked full-suite results and discloses their i
   assert.match(html, /View data for 32 results/);
 });
 
+test("cost points show provider symbols and offset whiskers at their measured coordinates", () => {
+  const payload = readPayload();
+  const { boardGroups, displayCi } = loadBoard(payload, "lib/payload.ts");
+  const { vendorOf } = loadBoard(payload, "lib/vendor.ts");
+  const { full } = boardGroups();
+  const rows = full.filter(row => row.total_cost_usd > 0 && row.asr_conditional !== null)
+    .sort((a, b) => a.total_cost_usd - b.total_cost_usd);
+  const html = renderStudy(payload);
+  const marks = [...html.matchAll(/<button class="study-scatter-point[^>]*style="left:([\d.]+)%;bottom:([\d.]+)%"[^>]*>(.*?)<\/button>/g)];
+  const whiskers = [...html.matchAll(/<svg[^>]*class="study-scatter-whisker[^>]*style="left:([\d.]+)%"[^>]*width="(\d+)"[^>]*>(.*?)<\/svg>/g)];
+  assert.equal(marks.length, rows.length);
+  assert.equal(whiskers.length, rows.length);
+  const xMin = Math.log10(rows[0].total_cost_usd) - 0.22;
+  const xMax = Math.log10(rows.at(-1).total_cost_usd) + 0.22;
+  const topTick = [...html.matchAll(/class="study-scatter-horizontal"[^>]*><span>(\d+)%<\/span>/g)].at(-1);
+  const yMax = Number(topTick[1]) / 100;
+  for (const [index, [, left, bottom, badge]] of marks.entries()) {
+    const row = rows[index];
+    const vendor = vendorOf(row);
+    const logCost = Math.log10(row.total_cost_usd);
+    assert.ok(Math.abs(Number(left) - 100 * (logCost - xMin) / (xMax - xMin)) < 1e-12);
+    assert.ok(Math.abs(Number(bottom) * yMax / 100 - row.asr_conditional) < 1e-12);
+    const [, intervalLeft, width, lines] = whiskers[index];
+    const [stem, upper, lower, connector] = [...lines.matchAll(/<line x1="(\d+)" x2="(\d+)" y1="([\d.]+)%" y2="([\d.]+)%"/g)]
+      .map(([, ...values]) => values.map(Number));
+    const [ciLow, ciHigh] = displayCi(row);
+    const center = Number(width) / 2;
+    assert.equal(intervalLeft, left);
+    assert.equal(stem[0], stem[1]);
+    assert.equal(stem[0] - center, Number(left) > 82 ? -15 : 15);
+    assert.ok(Math.abs((1 - stem[2] / 100) * yMax - ciHigh) < 1e-12);
+    assert.ok(Math.abs((1 - stem[3] / 100) * yMax - ciLow) < 1e-12);
+    assert.deepEqual(upper, [stem[0] - 2, stem[0] + 2, stem[2], stem[2]]);
+    assert.deepEqual(lower, [stem[0] - 2, stem[0] + 2, stem[3], stem[3]]);
+    assert.deepEqual(connector, [center, stem[0], 100 - Number(bottom), 100 - Number(bottom)]);
+    assert.match(badge, /class="study-scatter-badge" aria-hidden="true"/);
+    assert.match(badge, /--vm-light:#[0-9a-f]{6};--vm-dark:#[0-9a-f]{6}/);
+    if (vendor.kind === "logo") assert.ok(badge.includes(`href="#vlogo-${vendor.slug}"`));
+    else assert.ok(badge.includes(`class="xmark-letter">${vendor.letter}</span>`));
+  }
+});
+
 test("missing family records suppress the pooled finding while the cost finding remains", () => {
   const payload = readPayload();
   const fullCases = Math.max(...payload.ranked.map((row) => row.n_cases));
