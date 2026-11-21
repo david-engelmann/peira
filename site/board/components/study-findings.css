@@ -34,7 +34,7 @@
   border-top: 1px solid var(--line-soft);
 }
 
-.study-finding:has(.study-scatter) {
+.study-finding-cost {
   --finding-signal: var(--turquoise);
 }
 
@@ -140,8 +140,7 @@
 }
 
 .study-family-count,
-.study-family-rate,
-.study-scatter {
+.study-family-rate {
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
 }
@@ -185,135 +184,8 @@
   font-weight: 750;
 }
 
-.study-scatter {
-  margin: 24px 11px 0 34px;
-  color: var(--ink-3);
-  font-size: .75rem;
-}
-
-.study-scatter-plot {
-  position: relative;
-  height: clamp(170px, 20vw, 235px);
-  border: solid var(--line);
-  border-width: 0 0 1px 1px;
-}
-
-.study-scatter-horizontal,
-.study-scatter-vertical {
-  position: absolute;
-  pointer-events: none;
-}
-
-.study-scatter-horizontal {
-  inset-inline: 0;
-  border-top: 1px solid var(--line-soft);
-}
-
-.study-scatter-horizontal span {
-  position: absolute;
-  right: calc(100% + 7px);
-  top: 0;
-  transform: translateY(-50%);
-}
-
-.study-scatter-vertical {
-  inset-block: 0;
-  border-left: 1px solid var(--line-soft);
-}
-
-.study-scatter-vertical span {
-  position: absolute;
-  top: calc(100% + 5px);
-  transform: translateX(-50%);
-}
-
-.study-scatter-point,
-.study-scatter-whisker {
-  position: absolute;
-}
-
-.study-scatter-point {
-  z-index: 1;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  border: 1px solid var(--panel);
-  background: var(--chart-neutral);
-  transform: translate(-50%, 50%);
-}
-
-.study-scatter-whisker {
-  width: 1px;
-  background: var(--chart-neutral);
-}
-
-.study-scatter-point.study-scatter-highlight {
-  z-index: 2;
-  width: 12px;
-  height: 12px;
-  background: var(--finding-signal);
-}
-
-.study-scatter-point.study-scatter-lower-bound {
-  background: var(--panel);
-  border-color: var(--chart-neutral);
-}
-
-.study-scatter-point.study-scatter-highlight.study-scatter-lower-bound {
-  border: 2px solid var(--finding-signal);
-}
-
-.study-scatter-whisker.study-scatter-highlight {
-  width: 2px;
-  background: var(--finding-signal);
-}
-
-.study-scatter-axis {
-  text-align: center;
-  margin: 24px 0 0;
-}
-
 .study-chart-key {
   margin: 14px 0 0;
-}
-
-.study-cost-data summary {
-  cursor: pointer;
-  color: var(--accent);
-  font-weight: 650;
-  padding-block: 12px;
-}
-
-.study-cost-data table {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: .8rem;
-}
-
-.study-cost-data th,
-.study-cost-data td {
-  border-top: 1px solid var(--line-soft);
-  padding: 6px 5px;
-  text-align: left;
-}
-
-.study-cost-data th {
-  overflow-wrap: anywhere;
-}
-
-.study-cost-data td {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.study-cost-data td span {
-  display: block;
-  color: var(--ink-3);
-}
-
-.study-cost-data a {
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 
 @media (max-width: 800px) {

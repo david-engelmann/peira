@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type { ExplorerData, XCalArm, XRow } from "@/lib/explorerData";
+import type { FlipDecomposition } from "@/lib/payload";
 import {
   dimensionLabels,
   groupLabels,
@@ -37,6 +38,7 @@ import {
 
 type Pop = "all" | "full" | "guards" | "flagged";
 type Mode = "rank" | "chart" | "families";
+type ChartAxis = "cost" | "benign";
 type ProfileFilters = Record<ProfileDimension, string>;
 
 interface XState extends ProfileFilters {
@@ -48,13 +50,14 @@ interface XState extends ProfileFilters {
   q: string;
   sel: string | null;
   pin: string | null;
+  chartAxis: ChartAxis;
   frontier: boolean;
   grey: "vendor" | "wire" | "band" | "none";
 }
 
 interface Brush {
-  costLo: number;
-  costHi: number;
+  xLo: number;
+  xHi: number;
   asrLo: number;
   asrHi: number;
 }
@@ -77,6 +80,7 @@ const DEFAULTS: XState = {
   q: "",
   sel: null,
   pin: null,
+  chartAxis: "cost",
   frontier: false,
   grey: "vendor",
 };
@@ -101,10 +105,22 @@ function BreakName({ name }: { name: string }) {
   );
 }
 
-function decompLine(row: XRow): string | null {
-  if (row.decomp === null) return null;
-  const d = row.decomp;
-  return `${fmtInt(d.flips)} counted flips · ${fmtInt(d.malformedFlips)} to malformed output · genuine flips ${fmtPct(d.genuineRate)} of ${fmtInt(row.nEligible)} eligible cases`;
+function FlipBreakdown({ d, nEligible }: { d: FlipDecomposition; nEligible: number }) {
+  return (
+    <dl className="flip-breakdown">
+      <div>
+        <dt>Malformed flips</dt>
+        <dd>
+          <strong>{fmtInt(d.malformedFlips)}</strong> of {fmtInt(d.flips)} counted flips
+          {d.flips > 0 && <> ({fmtPct(d.malformedShare)})</>}
+        </dd>
+      </div>
+      <div>
+        <dt>Genuine flips</dt>
+        <dd><strong>{fmtPct(d.genuineRate)}</strong> of {fmtInt(nEligible)} eligible cases</dd>
+      </div>
+    </dl>
+  );
 }
 
 export function CalArm({ arm, label }: { arm: XCalArm; label: string }) {
@@ -158,86 +174,68 @@ export function CalArm({ arm, label }: { arm: XCalArm; label: string }) {
   );
 }
 
-function ReadingBody({ row }: { row: XRow }) {
-  const d = decompLine(row);
+export function ReadingBody({ row }: { row: XRow }) {
+  const weakest = row.weakestFamily;
   return (
     <div className="reading-body">
-      <dl className="reading-profile">
-        {profileDimensions
-          .filter((dimension) => dimension !== "tier" || row.profile.frontier)
-          .map((dimension) => (
-            <div key={dimension}>
-              <dt className="micro">{dimensionLabels[dimension]}</dt>
-              <dd>{groupLabels[dimension][profileValue(row.profile, dimension)]}</dd>
-            </div>
-          ))}
-      </dl>
-      <div className="reading-figs">
+      <dl className="reading-figs">
         <div>
-          <span className="micro">{row.asrLabel}</span>
-          <strong>{row.asrText ?? "·"}</strong>
-          {row.ciText && <span className="rsub">{row.ciText}</span>}
+          <dt>{row.asrLabel}</dt>
+          <dd>
+            <strong>{row.asrText ?? "·"}</strong>
+            {row.ciText && <span className="rsub">95% CI {row.ciText}</span>}
+          </dd>
         </div>
         <div>
-          <span className="micro">Benign accuracy</span>
-          <strong>{row.benignText ?? "·"}</strong>
+          <dt>Benign accuracy</dt>
+          <dd><strong>{row.benignText ?? "·"}</strong></dd>
         </div>
         <div>
-          <span className="micro">Malformed output</span>
-          <strong>{row.malformedText ?? "·"}</strong>
+          <dt>Malformed output</dt>
+          <dd><strong>{row.malformedText ?? "·"}</strong></dd>
         </div>
         <div>
-          <span className="micro">Calibration error</span>
-          <strong>{row.eceText ?? "·"}</strong>
-          {row.ece !== null && (
-            <span className="rsub">On a 0 to 1 scale</span>
-          )}
+          <dt>Calibration error</dt>
+          <dd>
+            <strong>{row.eceText ?? "·"}</strong>
+            {row.ece !== null && <span className="rsub">On a 0 to 1 scale</span>}
+          </dd>
         </div>
         <div>
-          <span className="micro">Cost of one run</span>
-          <strong>{row.costText}</strong>
-          {row.costSub && <span className="rsub">{row.costSub}</span>}
+          <dt>Cost of one run</dt>
+          <dd>
+            <strong>{row.costText}</strong>
+            {row.costSub && <span className="rsub">{row.costSub}</span>}
+          </dd>
         </div>
         <div>
-          <span className="micro">Median latency</span>
-          <strong>{row.latencyText ?? "·"}</strong>
-          {row.latencyText !== null && (
-            <span className="rsub">Per attacked call</span>
-          )}
+          <dt>Median latency</dt>
+          <dd>
+            <strong>{row.latencyText ?? "·"}</strong>
+            {row.latencyText !== null && <span className="rsub">Per attacked call</span>}
+          </dd>
         </div>
         {row.taxText && (
           <div>
-            <span className="micro">Robustness tax</span>
-            <strong>{row.taxText}</strong>
+            <dt>Robustness tax</dt>
+            <dd><strong>{row.taxText}</strong></dd>
           </div>
         )}
-      </div>
-      {d && <p className="reading-line">{d}</p>}
-      {row.weakestFamily && (
-        <p className="reading-line">
-          Weakest family {row.weakestFamily.name} at{" "}
-          {row.weakestFamily.text}
-          {row.weakestFamily.baseText
-            ? ` over ${row.weakestFamily.baseText}`
-            : ""}
-          .
-          {row.weakestFamily.decompText
-            ? ` ${row.weakestFamily.decompText}`
-            : ""}
-        </p>
-      )}
+      </dl>
       {row.flaggedReason && (
         <p className="reading-line flagged-line">{row.flaggedReason}</p>
       )}
       {row.sliceNote && <p className="reading-line">{row.sliceNote}</p>}
       {row.unanswered && <p className="reading-line">{row.unanswered}</p>}
       {row.singleCall && <p className="reading-line">{row.singleCall}</p>}
+      {row.decomp && <FlipBreakdown d={row.decomp} nEligible={row.nEligible} />}
       <ResultLink key={row.slug} href={row.href} />
-      <p className="reading-prov">{row.provenanceLine}</p>
-      {row.rerunText && <p className="reading-prov">{row.rerunText}</p>}
       {row.record.families.length > 0 && (
-        <div className="rdata">
-          <p className="micro rdata-head">Attack families</p>
+        <details className="rdata">
+          <summary>
+            <span>Attack families</span>
+            {weakest && <span className="rdata-summary">Weakest · {weakest.name}</span>}
+          </summary>
           {row.record.families.map((f) => (
             <div className="drow" key={f.key}>
               <div className="drow-top">
@@ -257,11 +255,11 @@ function ReadingBody({ row }: { row: XRow }) {
               {f.metaText && <p className="drow-sub">{f.metaText}</p>}
             </div>
           ))}
-        </div>
+        </details>
       )}
       {row.record.severities.length > 0 && (
-        <div className="rdata">
-          <p className="micro rdata-head">Severity</p>
+        <details className="rdata">
+          <summary><span>Severity</span></summary>
           {row.record.severities.map((s) => (
             <div className="drow" key={s.label}>
               <div className="drow-top">
@@ -275,10 +273,10 @@ function ReadingBody({ row }: { row: XRow }) {
               </div>
               {s.segments.length > 0 && (
                 <p className="drow-sub">
-                  {s.segments.map((seg, i) => (
-                    <span key={seg}>
-                      {i > 0 && " · "}
-                      <span className="sevseg">{seg}</span>
+                  {s.segments.map((segment, index) => (
+                    <span key={segment}>
+                      {index > 0 && " · "}
+                      <span className="sevseg">{segment}</span>
                     </span>
                   ))}
                 </p>
@@ -286,11 +284,11 @@ function ReadingBody({ row }: { row: XRow }) {
               {s.metaText && <p className="drow-sub">{s.metaText}</p>}
             </div>
           ))}
-        </div>
+        </details>
       )}
       {row.record.calibration !== null && (
-        <div className="rdata">
-          <p className="micro rdata-head">Calibration</p>
+        <details className="rdata">
+          <summary><span>Calibration</span></summary>
           <CalArm arm={row.record.calibration.benign} label="Benign" />
           <CalArm arm={row.record.calibration.attacked} label="Attacked" />
           {row.record.calibration.deltaText && (
@@ -298,19 +296,30 @@ function ReadingBody({ row }: { row: XRow }) {
               {row.record.calibration.deltaText}
             </p>
           )}
-        </div>
+        </details>
       )}
-      {row.record.runFacts.length > 0 && (
-        <div className="rdata">
-          <p className="micro rdata-head">Run record</p>
+      <details className="rdata">
+        <summary><span>Run record and provenance</span></summary>
+        {row.rerunText && <p className="reading-prov">{row.rerunText}</p>}
+        <dl className="reading-profile">
+          {profileDimensions
+            .filter((dimension) => dimension !== "tier" || row.profile.frontier)
+            .map((dimension) => (
+              <div key={dimension}>
+                <dt className="micro">{dimensionLabels[dimension]}</dt>
+                <dd>{groupLabels[dimension][profileValue(row.profile, dimension)]}</dd>
+              </div>
+            ))}
+        </dl>
+        <dl className="reading-facts">
           {row.record.runFacts.map((fact) => (
             <div className="rrow" key={fact.label}>
-              <span>{fact.label}</span>
-              <strong>{fact.value}</strong>
+              <dt>{fact.label}</dt>
+              <dd>{fact.value}</dd>
             </div>
           ))}
-        </div>
-      )}
+        </dl>
+      </details>
     </div>
   );
 }
@@ -430,6 +439,17 @@ const COST_BANDS: Array<{ key: string; label: string; test: (c: number | null) =
   { key: "nocharge", label: "No API cost", test: (c) => c === 0 },
   { key: "nocost", label: "No cost recorded", test: (c) => c === null },
 ];
+
+const CHART_PRESETS = [
+  { label: "Run cost", chartAxis: "cost", cost: "all", frontier: false },
+  { label: "Cost frontier", chartAxis: "cost", cost: "priced", frontier: true },
+  { label: "Benign accuracy", chartAxis: "benign", cost: "all", frontier: false },
+] as const;
+
+function chartXValue(row: XRow, axis: ChartAxis): number | null {
+  if (axis === "benign") return row.benign;
+  return row.costValue !== null && row.costValue > 0 ? row.costValue : null;
+}
 
 function sortValue(row: XRow, sort: string): number | null {
   switch (sort) {
@@ -595,7 +615,8 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       const row = bySlug.get(pinSlug);
       if (row) patch.pin = row.runId;
     }
-    if (params.get("frontier") === "1") patch.frontier = true;
+    if (params.get("axis") === "benign") patch.chartAxis = "benign";
+    if (patch.chartAxis === "cost" && params.get("frontier") === "1") patch.frontier = true;
     const grey = params.get("grey");
     if (grey === "vendor" || grey === "wire" || grey === "band" || grey === "none") {
       patch.grey = grey;
@@ -688,11 +709,12 @@ export default function Explorer({ data }: { data: ExplorerData }) {
 
   const visible = useMemo(() => {
     if (brush === null) return filtered;
-    return filtered.filter((row) =>
-      row.asr !== null && row.asr >= brush.asrLo && row.asr <= brush.asrHi &&
-      row.costValue !== null && row.costValue >= brush.costLo && row.costValue <= brush.costHi,
-    );
-  }, [brush, filtered]);
+    return filtered.filter((row) => {
+      const x = chartXValue(row, state.chartAxis);
+      return x !== null && x >= brush.xLo && x <= brush.xHi &&
+        row.asr !== null && row.asr >= brush.asrLo && row.asr <= brush.asrHi;
+    });
+  }, [brush, filtered, state.chartAxis]);
 
   const groups = useMemo(() => {
     if (state.pop !== "all") return [{ kind: "one" as const, rows: sortRows(visible, state.sort) }];
@@ -739,7 +761,8 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     params.set("sel", chartSelection?.slug ?? "");
     if (urlPin) params.set("pin", urlPin.slug);
     if (chartSelection && expandedRow?.runId === chartSelection.runId) params.set("open", "1");
-    if (state.frontier) params.set("frontier", "1");
+    if (state.chartAxis !== DEFAULTS.chartAxis) params.set("axis", state.chartAxis);
+    if (state.chartAxis === "cost" && state.frontier) params.set("frontier", "1");
     if (state.grey !== DEFAULTS.grey) params.set("grey", state.grey);
     const target = `#explorer?${params}`;
     if (window.location.hash !== target) {
@@ -902,15 +925,17 @@ export default function Explorer({ data }: { data: ExplorerData }) {
         </label>
         {state.mode === "chart" && (
           <>
-            <label className="xcheck">
-              <input
-                type="checkbox"
-                checked={state.frontier}
-                onChange={(e) => update({ frontier: e.target.checked })}
-              />
-              <span>Cost frontier</span>
-            </label>
-            <label className="xfield">
+            {state.chartAxis === "cost" && (
+              <label className="xcheck">
+                <input
+                  type="checkbox"
+                  checked={state.frontier}
+                  onChange={(e) => update({ frontier: e.target.checked })}
+                />
+                <span>Cost frontier</span>
+              </label>
+            )}
+            <label className="xfield chart-highlight">
               <span className="micro">Highlight</span>
               <select
                 value={state.grey}
@@ -989,6 +1014,30 @@ export default function Explorer({ data }: { data: ExplorerData }) {
           onPin={(id) => update({ pin: state.pin === id ? null : id })}
           onUnpin={() => update({ pin: null })}
         />
+      )}
+      {state.mode === "chart" && (
+        <div className="chart-presets" role="group" aria-labelledby="chart-presets-label">
+          <span id="chart-presets-label" className="chart-presets-label">Chart presets</span>
+          {CHART_PRESETS.map(({ label, chartAxis, cost, frontier }) => (
+            <button
+              key={label}
+              type="button"
+              className="ghostbtn"
+              aria-pressed={
+                brush === null && state.chartAxis === chartAxis &&
+                state.cost === cost && state.frontier === frontier
+              }
+              onClick={() => {
+                setBrush(null);
+                setHoverId(null);
+                setChipId(null);
+                update({ chartAxis, cost, frontier });
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       )}
       {state.mode === "chart" && visible.length > 0 && visible.every((row) => row.kind === "slice") ? (
         <p className="xempty">
@@ -1394,9 +1443,15 @@ function ChartView({
     return () => window.removeEventListener("keydown", onKey);
   }, [cardUp, dismissChip]);
 
+  const costAxis = state.chartAxis === "cost";
+  const pointValue = (row: XRow) => chartXValue(row, state.chartAxis) as number;
+  const metricText = (row: XRow) => costAxis ? row.costText : row.benignText;
   const plotted = visible.filter((r) => r.kind !== "slice");
-  const points = plotted.filter((r) => r.costValue !== null && r.costValue > 0);
-  const rail = plotted.filter((r) => r.costValue === null || r.costValue === 0);
+  const points = plotted.filter((r) =>
+    chartXValue(r, state.chartAxis) !== null && (costAxis || r.asr !== null),
+  );
+  const rail = costAxis ? plotted.filter((r) => r.costValue === null || r.costValue === 0) : [];
+  const missingAccuracy = costAxis ? 0 : plotted.length - points.length;
   const chartVisible = points.length > 0 || rail.length > 0;
   useEffect(() => {
     const el = svgRef.current;
@@ -1408,23 +1463,12 @@ function ChartView({
     return () => ro.disconnect();
   }, [chartVisible]);
 
-  /* The plot's own ceiling, derived from the results that
-   * seat on it: the highest rate among the ranked results
-   * that stand as points, a recorded cost above zero,
-   * rounded up to the next five percent step. A ranked
-   * result with no recorded price stands in the rail and
-   * does not stretch a frame it never enters. Flagged
-   * results never stretch the frame either, though their
-   * seated points still draw inside it, and a point past
-   * the frame is carried by the off-scale note, mercury's
-   * standing case. */
+  // The vertical scale covers all ranked full-suite results with a value
+  // on this axis. Flagged results above it appear in the off-scale note.
   const plottedCeiling = Math.max(
     0,
     ...data.rows
-      .filter(
-        (r) =>
-          r.kind === "full" && r.costValue !== null && r.costValue > 0,
-      )
+      .filter((r) => r.kind === "full" && chartXValue(r, state.chartAxis) !== null)
       .map((r) => r.asr ?? 0),
   );
   const axisMax = Math.max(
@@ -1454,23 +1498,37 @@ function ChartView({
   const padR = 30;
   const padT = 18;
   const padB = 40;
-  const costs = points.map((r) => r.costValue as number);
-  const lo = costs.length ? Math.pow(10, Math.floor(Math.log10(Math.min(...costs)) * 2) / 2) : 1;
-  const hi = Math.max(
-    lo * Math.sqrt(10),
-    costs.length ? Math.pow(10, Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2) : 10,
-  );
+  const values = points.map(pointValue);
+  let lo = 0.9;
+  let hi = 1;
+  if (costAxis) {
+    const min = values.length > 0 ? Math.min(...values) : 1;
+    const max = values.length > 0 ? Math.max(...values) : 10;
+    lo = Math.pow(10, Math.floor(Math.log10(min) * 2) / 2);
+    hi = Math.max(lo * Math.sqrt(10), Math.pow(10, Math.ceil(Math.log10(max) * 2) / 2));
+  } else if (values.length > 0) {
+    // End at 100% and show at least ten percentage points.
+    lo = Math.max(0, Math.min(lo, Math.floor(Math.min(...values) * 20) / 20));
+  }
 
   // The captured starting point belongs to the old plot after a resize.
   useLayoutEffect(() => {
     setDrag(null);
-  }, [width, lo, hi, axisMax]);
+  }, [width, lo, hi, axisMax, costAxis]);
 
-  const x = (c: number) =>
-    padL + ((Math.log10(c) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo))) * (W - padL - padR);
+  const x = (value: number) => {
+    const fraction = costAxis
+      ? (Math.log10(value) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo))
+      : (value - lo) / (hi - lo);
+    return padL + fraction * (W - padL - padR);
+  };
   const y = (a: number) => padT + (1 - a / axisMax) * (H - padT - padB);
-  const invX = (px: number) =>
-    Math.pow(10, Math.log10(lo) + ((px - padL) / (W - padL - padR)) * (Math.log10(hi) - Math.log10(lo)));
+  const invX = (px: number) => {
+    const fraction = (px - padL) / (W - padL - padR);
+    return costAxis
+      ? Math.pow(10, Math.log10(lo) + fraction * (Math.log10(hi) - Math.log10(lo)))
+      : lo + fraction * (hi - lo);
+  };
   const invY = (px: number) => ((padT + (H - padT - padB) - px) / (H - padT - padB)) * axisMax;
 
   /* The subject label plate, measured at render time. The
@@ -1504,21 +1562,31 @@ function ChartView({
       w: right - px,
       h: Math.max(a.y + a.height, b.y + b.height) + 6 - y,
     });
-  }, [subjectId, width, fontsReady, drag, lo, hi, axisMax]);
+  }, [subjectId, width, fontsReady, drag, lo, hi, axisMax, costAxis]);
 
   const yTicks: number[] = [];
   for (let t = 0; t <= axisMax + 1e-9; t += 0.05) yTicks.push(Math.round(t * 100) / 100);
   const xTicks: Array<{ v: number; label: string }> = [];
-  for (let k = Math.floor(Math.log10(lo)); k <= Math.ceil(Math.log10(hi)); k += 1) {
-    for (const m of [1, 3]) {
-      const v = m * Math.pow(10, k);
-      if (v >= lo && v <= hi) {
+  if (costAxis) {
+    for (let k = Math.floor(Math.log10(lo)); k <= Math.ceil(Math.log10(hi)); k += 1) {
+      for (const m of [1, 3]) {
+        const v = m * Math.pow(10, k);
         const previous = xTicks.at(-1);
-        if (!previous || x(v) - x(previous.v) >= 44) {
+        if (v >= lo && v <= hi && (!previous || x(v) - x(previous.v) >= 44)) {
           xTicks.push({ v, label: fmtUsd(v) });
         }
       }
     }
+  } else {
+    xTicks.push({ v: lo, label: fmtPct(lo) });
+    for (let step = Math.round(lo * 20) + 1; step < 20; step += 1) {
+      const v = step / 20;
+      const previous = xTicks[xTicks.length - 1].v;
+      if (x(v) - x(previous) >= 44 && x(1) - x(v) >= 44) {
+        xTicks.push({ v, label: fmtPct(v) });
+      }
+    }
+    xTicks.push({ v: 1, label: fmtPct(1) });
   }
 
   const matches = (row: XRow): boolean => {
@@ -1528,11 +1596,11 @@ function ChartView({
     return row.kind === selRow.kind;
   };
 
-  const frontierPts = state.frontier
+  const frontierPts = costAxis && state.frontier
     ? (() => {
         const sorted = [...points]
           .filter((r) => r.asr !== null && r.asr <= axisMax)
-          .sort((a, b) => (a.costValue as number) - (b.costValue as number));
+          .sort((a, b) => pointValue(a) - pointValue(b) || (a.asr as number) - (b.asr as number));
         const kept: XRow[] = [];
         let min = Infinity;
         for (const r of sorted) {
@@ -1570,14 +1638,17 @@ function ChartView({
     if (selRow.kind === "slice") {
       return `${name} ran on the guard subset. See Rankings or Families for its results.`;
     }
-    if (selRow.costValue !== null && selRow.costValue > 0 && selRow.asr !== null && selRow.asr > axisMax) {
+    if (chartXValue(selRow, state.chartAxis) !== null && selRow.asr !== null && selRow.asr > axisMax) {
       return `${name} is above the plotted range at ${selRow.asrText} counted attack success.`;
     }
-    if (selRow.costKind === "local") {
+    if (costAxis && selRow.costKind === "local") {
       return `${name} ran locally and is listed below under No API cost.`;
     }
-    if (selRow.costValue === null) {
+    if (costAxis && selRow.costValue === null) {
       return `${name} appears below under No recorded cost.`;
+    }
+    if (!costAxis && selRow.benign === null) {
+      return `${name} has no benign accuracy to plot.`;
     }
     if (selRow.asr === null) {
       return `${name} has no attack success rate to plot.`;
@@ -1594,7 +1665,7 @@ function ChartView({
     };
   };
 
-  const subjectCx = subjectRow ? x(subjectRow.costValue as number) : 0;
+  const subjectCx = subjectRow ? x(pointValue(subjectRow)) : 0;
   const subjectCy = subjectRow ? y(subjectRow.asr as number) : 0;
   const subjectLabelBelow = subjectCy < 72;
   const labelShift = plate
@@ -1850,7 +1921,7 @@ function ChartView({
       Guard results use a separate set of cases. Open Rankings or Families to
       see those results.
     </p>
-  ) : points.length === 0 && rail.length === 0 ? (
+  ) : plotted.length === 0 ? (
     <p className="xempty">
       No results match these filters.
     </p>
@@ -1858,15 +1929,19 @@ function ChartView({
     <div className="chartlayout">
       <div className="chartwrap" ref={wrapRef}>
         <div className="chart-heading">
-          <h3>Cost and attack success</h3>
-          <p>Each point is a run with a recorded API cost.</p>
+          <h3>{costAxis ? "Cost and attack success" : "Benign accuracy and attack success"}</h3>
+          <p>{costAxis
+            ? "Each point is a run with a recorded API cost."
+            : "Benign accuracy is the share of decisions on benign cases that were correct."}</p>
         </div>
-        <svg
+        {chartVisible && <svg
           ref={svgRef}
           className="chart"
           viewBox={`0 0 ${W} ${H}`}
           role="group"
-          aria-label="Attack success against the cost of one run"
+          aria-label={costAxis
+            ? "Attack success against the cost of one run"
+            : "Attack success against benign accuracy"}
           onPointerLeave={() => setHoverId(null)}
         >
           <rect
@@ -1895,8 +1970,8 @@ function ChartView({
               const h = Math.abs(y1 - drag.y0);
               if (w > 14 && h > 14) {
                 onBrush({
-                  costLo: invX(Math.min(drag.x0, x1)),
-                  costHi: invX(Math.max(drag.x0, x1)),
+                  xLo: invX(Math.min(drag.x0, x1)),
+                  xHi: invX(Math.max(drag.x0, x1)),
                   asrLo: Math.max(0, invY(Math.max(drag.y0, y1))),
                   asrHi: invY(Math.min(drag.y0, y1)),
                 });
@@ -1927,7 +2002,7 @@ function ChartView({
             </text>
           ))}
           <text className="axis-title" x={padL} y={H - 6}>
-            Cost of one run, log scale
+            {costAxis ? "Cost of one run, log scale" : "Benign accuracy, higher is better"}
           </text>
           <text className="axis-title" x={padL} y={padT - 6}>
             Attack success, lower is better
@@ -1936,13 +2011,13 @@ function ChartView({
             <polyline
               className="frontier-line"
               points={frontierPts
-                .map((r) => `${x(r.costValue as number)},${y(r.asr as number)}`)
+                .map((r) => `${x(pointValue(r))},${y(r.asr as number)}`)
                 .join(" ")}
             />
           )}
           {points.map((row) => {
             if (row.asr === null || row.asr > axisMax) return null;
-            const cx = x(row.costValue as number);
+            const cx = x(pointValue(row));
             const cy = y(row.asr);
             const on = matches(row);
             const subject = subjectId === row.runId;
@@ -1963,7 +2038,7 @@ function ChartView({
                 data-disc={row.runId}
                 tabIndex={0}
                 role="button"
-                aria-label={`Details for ${row.fullName}, attack success ${row.asrText ?? "not measured"}, cost ${row.costText}`}
+                aria-label={`Details for ${row.fullName}, attack success ${row.asrText ?? "not measured"}, ${costAxis ? "cost" : "benign accuracy"} ${metricText(row)}`}
                 onPointerEnter={() => setHoverId(row.runId)}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => {
@@ -2064,12 +2139,19 @@ function ChartView({
                 y={subjectLabelBelow ? subjectCy + 54 : subjectCy - 25}
                 textAnchor="middle"
               >
-                {subjectRow.asrText} · {subjectRow.costText}
+                {subjectRow.asrText} · {metricText(subjectRow)}
               </text>
             </g>
           )}
-        </svg>
+        </svg>}
         {selStanding && <p className="chart-selstand">{selStanding}</p>}
+        {missingAccuracy > 0 && (
+          <p className="chart-selstand">
+            {missingAccuracy === 1
+              ? "One result is missing benign accuracy or attack success and appears only in the results list."
+              : `${fmtInt(missingAccuracy)} results are missing benign accuracy or attack success and appear only in the results list.`}
+          </p>
+        )}
         {state.frontier && frontierPts.length > 1 && (
           <p className="chart-legend">
             <span className="legend-swatch" aria-hidden="true" />
@@ -2107,7 +2189,7 @@ function ChartView({
                 chipSeat?.id === chipRow.runId &&
                 chipSeat.left !== null
                   ? chipSeat.left
-                  : Math.min(86, Math.max(2, (x(chipRow.costValue as number) / W) * 100))
+                  : Math.min(86, Math.max(2, (x(pointValue(chipRow)) / W) * 100))
               }%`,
               top: `${
                 chipSeat?.id === chipRow.runId
@@ -2123,7 +2205,7 @@ function ChartView({
             <p className="chip-figs">
               {chipRow.asrText}
               {chipRow.ciText ? ` · ${chipRow.ciText}` : ""} ·{" "}
-              {chipRow.costText}
+              {metricText(chipRow)}
             </p>
             {chipRow.kind === "flagged" && chipRow.decomp && (
               <p className="chip-figs">
@@ -2243,7 +2325,7 @@ interface FamiliesViewProps {
   onToggle: (row: XRow) => void;
 }
 
-function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
+export function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
   const maxFam = Math.max(
     0.05,
     ...data.rows.flatMap((r) =>
@@ -2253,17 +2335,14 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
   const axis = Math.ceil(maxFam * 10) / 10;
   return (
     <div className="xfamilies">
-      <p className="cap">
-        Attack success by case family, on a shared axis that tops out
-        at {fmtPct(axis)}.
-      </p>
+      <p className="xfam-key">Bars show attack success. Counts show flips / eligible cases. Malformed flips are broken out wherever they occurred.</p>
       <div className="xfam-colhead" aria-hidden="true">
         <span className="micro">Result</span>
         <span className="micro">Overall attack success</span>
       </div>
-      <div className="xfam-bars axisrow" aria-hidden="true">
+      <div className="xfam-bars axisrow" role="img" aria-label={`Family attack success scale from 0% to ${fmtPct(axis)}`}>
         <div className="xfam-bar">
-          <span className="xfam-label micro">Axis</span>
+          <span className="xfam-label">Family attack success</span>
           <span className="xfam-track ghost">
             {[0, 0.25, 0.5, 0.75, 1].map((f) => (
               <span
@@ -2275,26 +2354,18 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
               </span>
             ))}
           </span>
-          <span className="xfam-val micro">Of axis</span>
         </div>
-        <div />
       </div>
       {groups.map((group) => (
         <div key={group.kind} className="xgroup">
           {group.rows.map((row) => (
             <div key={row.runId} data-rid={row.runId} className={`xfamrow ${row.kind}`}>
-              <div
+              <button
+                type="button"
                 className="xfam-head"
-                role="button"
-                tabIndex={0}
                 aria-expanded={expanded === row.runId}
+                aria-controls={expanded === row.runId ? `family-reading-${row.runId}` : undefined}
                 onClick={() => onToggle(row)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onToggle(row);
-                  }
-                }}
               >
                 <span
                   className="xrank rn"
@@ -2310,13 +2381,22 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
                     <span className="xstate">Flagged · not ranked</span>
                   )}
                 </span>
-                <span className="rn">{row.asrText ?? "·"}</span>
-              </div>
+                <span className="rn">
+                  <span className="xfam-screen-label">Overall attack success </span>
+                  {row.asrText ?? "·"}
+                </span>
+                <span className="reading-chevron" aria-hidden="true" />
+              </button>
+              {expanded === row.runId && (
+                <div className="reading open" id={`family-reading-${row.runId}`}>
+                  <ReadingBody row={row} />
+                </div>
+              )}
               <div className="xfam-bars">
                 {row.families.map((fam) => (
-                  <div className="xfam-bar" key={fam.key} title={`${fam.full} ${fam.asr !== null ? fmtPct(fam.asr) : "not measured"}${fam.decompText ? `. ${fam.decompText}` : ""}`}>
+                  <div className="xfam-bar" key={fam.key}>
                     <span className="xfam-label">{fam.full}</span>
-                    <span className="xfam-track">
+                    <span className="xfam-track" aria-hidden="true">
                       {fam.asr !== null && (
                         <span
                           className="xfam-fill"
@@ -2326,18 +2406,18 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
                     </span>
                     <span className="xfam-val rn">
                       {fam.asr !== null ? fmtPct(fam.asr) : "Not measured"}
+                      {fam.asr !== null && fam.decomp?.malformedFlips === 0 && (
+                        <small className="xfam-count" aria-label={`${fam.decomp.flips} genuine flips in ${fam.decomp.nEligible} eligible cases, zero malformed flips`}>
+                          {fmtInt(fam.decomp.flips)} / {fmtInt(fam.decomp.nEligible)}
+                        </small>
+                      )}
                     </span>
-                    {fam.decompText && (
-                      <p className="xfam-decomp">{fam.decompText}</p>
+                    {fam.asr !== null && fam.decomp && fam.decomp.malformedFlips > 0 && (
+                      <FlipBreakdown d={fam.decomp} nEligible={fam.decomp.nEligible} />
                     )}
                   </div>
                 ))}
               </div>
-              {expanded === row.runId && (
-                <div className="reading open">
-                  <ReadingBody row={row} />
-                </div>
-              )}
             </div>
           ))}
         </div>

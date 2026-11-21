@@ -85,12 +85,14 @@ if (readmeOnly) {
       await page.waitForFunction(() => document.querySelector("#explorer-kind")?.value === "general"
         && document.querySelector("#explorer-serving")?.value === "hosted");
       const chart = await page.waitForSelector(".chartlayout svg.chart");
-      await chart.evaluate(el => window.scrollBy({ top: el.closest(".chartlayout").getBoundingClientRect().top - 96, behavior: "instant" }));
+      await page.$eval("#explorer", el => el.blur());
+      await chart.evaluate(() => window.scrollBy({ top: document.querySelector(".chart-presets").getBoundingClientRect().top - 96, behavior: "instant" }));
       const clip = await page.evaluate(() => {
         const figure = document.querySelector(".chartlayout").getBoundingClientRect();
+        const top = document.querySelector(".chart-presets").getBoundingClientRect().top;
         const margin = 16;
-        return { x: figure.left - margin, y: figure.top + scrollY - margin,
-          width: figure.width + 2 * margin, height: figure.height + margin * 2 };
+        return { x: figure.left - margin, y: top + scrollY - margin,
+          width: figure.width + 2 * margin, height: figure.bottom - top + margin * 2 };
       });
       await page.screenshot({ path: path.join(capDir, `explorer-${theme}.webp`), quality: 92, clip });
     }

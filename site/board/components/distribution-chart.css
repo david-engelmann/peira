@@ -149,6 +149,7 @@
   border-radius: 7px;
 }
 
+.distribution-identity, .field-plate .plate-model { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .distribution-selection { min-width: 0; }
 
 .distribution-result { display: flex; flex-wrap: wrap; gap: 2px 9px; }
@@ -201,7 +202,7 @@
 .field-plate li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: baseline;
+  align-items: center;
   gap: clamp(7px, 1vw, 14px);
   padding: 7px 0;
   border-top: 1px solid var(--plate-rule);
@@ -221,7 +222,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.field-plate li span { color: var(--plate-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.field-plate li > span, .field-plate li strong span { color: var(--plate-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .field-plate li > span { white-space: nowrap; }
 .field-plate figcaption { font-size: 13px; }
 

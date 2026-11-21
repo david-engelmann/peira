@@ -1,6 +1,7 @@
 import { costIsLowerBound, familiesOf, familyFullName } from "@/lib/charts";
 import { spearman } from "@/lib/findings";
-import { fmtCi, fmtInt, fmtPct, fmtUsdExact } from "@/lib/format";
+import { fmtInt, fmtPct, fmtUsdExact } from "@/lib/format";
+import { markOf } from "@/lib/inspectorData";
 import {
   boardGroups,
   displayCi,
@@ -11,6 +12,8 @@ import {
   wireWords,
   type BoardRow,
 } from "@/lib/payload";
+import { vendorFamilyOf } from "@/lib/vendorColors";
+import StudyCostChart from "./StudyCostChart";
 import "./study-findings.css";
 
 interface FamilyTotal {
@@ -106,11 +109,16 @@ function FamilyFinding({ rows }: { rows: BoardRow[] }) {
   );
 }
 
-function costResults(rows: BoardRow[]) {
+function hasPositiveCost(row: BoardRow): row is BoardRow & { total_cost_usd: number } {
+  const cost = row.total_cost_usd;
+  return cost !== null && Number.isFinite(cost) && cost > 0;
+}
+
+function costResults(rows: (BoardRow & { total_cost_usd: number })[]) {
   return rows.flatMap((row) => {
     const cost = row.total_cost_usd;
     const asr = row.asr_conditional;
-    if (cost === null || !Number.isFinite(cost) || cost <= 0 || asr === null) return [];
+    if (asr === null || !Number.isFinite(asr)) return [];
     const families = [...familiesOf(row).values()];
     const complete = families.length > 0 && families.every(f =>
       f.nLatencyCalls !== null && f.nCostedCalls === f.nLatencyCalls);
@@ -119,7 +127,8 @@ function costResults(rows: BoardRow[]) {
 }
 
 function CostFinding({ rows, allRows }: { rows: BoardRow[]; allRows: BoardRow[] }) {
-  const results = costResults(rows);
+  const recordedCosts = rows.filter(hasPositiveCost);
+  const results = costResults(recordedCosts);
   if (results.length < 2) return null;
 
   const complete = results.filter(result => result.complete);
@@ -138,31 +147,11 @@ function CostFinding({ rows, allRows }: { rows: BoardRow[]; allRows: BoardRow[] 
   const completeRho = complete.length < 2 ? NaN : spearman(complete.map(r => r.cost), complete.map(r => r.asr));
   const correlation = (value: number) => value.toFixed(2).replace("-", "−");
   const partialCount = results.filter(result => result.lowerBound).length;
-  const hasLowerBounds = results.some(({ lowerBound }) => lowerBound);
-
-  const lowestCost = Math.min(...results.map(({ cost }) => cost));
-  const xMin = Math.log10(lowestCost) - 0.14;
-  const xMax = Math.log10(highestCost.cost) + 0.14;
-  const x = (cost: number) => `${100 * (Math.log10(cost) - xMin) / (xMax - xMin)}%`;
-  const decadeStart = Math.ceil(xMin);
-  const decadeStep = Math.max(1, Math.ceil((xMax - decadeStart) / 5));
-  const decades = Array.from(
-    { length: Math.floor((xMax - decadeStart) / decadeStep) + 1 },
-    (_, i) => 10 ** (decadeStart + i * decadeStep),
-  );
-  const xTicks = decades.length >= 2 ? decades : [...new Set([lowestCost, highestCost.cost])];
-  const maxAsr = Math.max(...results.map(({ asr, ci }) => ci?.[1] ?? asr));
-  const yMax = Math.min(1, Math.max(0.2, Math.ceil((maxAsr + 0.025) * 10) / 10));
-  const y = (rate: number) => `${100 * rate / yMax}%`;
-  const yStep = yMax > 0.5 ? 0.2 : 0.1;
-  const yTicks = Array.from(
-    { length: Math.round(yMax / yStep) + 1 },
-    (_, i) => i * yStep,
-  ).map((tick) => Number(tick.toFixed(1))).filter((tick) => tick <= yMax);
-  const excluded = rows.length - results.length;
+  const excludedCosts = rows.length - recordedCosts.length;
+  const excludedRates = recordedCosts.length - results.length;
 
   return (
-    <article className="study-finding" aria-labelledby="study-cost-heading">
+    <article className="study-finding study-finding-cost" aria-labelledby="study-cost-heading">
       <div className="study-finding-copy">
         <h3 id="study-cost-heading">What did robustness cost?</h3>
         {Number.isFinite(completeRho) && (
@@ -185,8 +174,9 @@ function CostFinding({ rows, allRows }: { rows: BoardRow[]; allRows: BoardRow[] 
           </p>
         )}
         <p className="study-finding-note">
-          {fmtInt(results.length)} ranked full-suite results had positive serving costs
-          recorded for the benchmark calls.{excluded > 0 && <> {fmtInt(excluded)} had zero or unrecorded cost.</>}
+          {fmtInt(recordedCosts.length)} ranked full-suite results had positive serving costs
+          recorded for the benchmark calls.{excludedCosts > 0 && <> {fmtInt(excludedCosts)} had zero or unrecorded cost.</>}
+          {excludedRates > 0 && <> The chart excludes {fmtInt(excludedRates)} without an attack success rate.</>}
         </p>
         <a className="study-finding-link" href="#explorer?pop=full&mode=chart">
           Explore the cost chart <span aria-hidden="true">↗</span>
@@ -198,66 +188,20 @@ function CostFinding({ rows, allRows }: { rows: BoardRow[]; allRows: BoardRow[] 
           <strong>Attack success vs. serving cost</strong>
           <span>Lower attack success is better</span>
         </figcaption>
-        <div className="study-scatter" aria-hidden="true">
-          <div className="study-scatter-plot">
-            {yTicks.map((tick) => (
-              <div className="study-scatter-horizontal" key={tick} style={{ bottom: y(tick) }}>
-                <span>{Math.round(tick * 100)}%</span>
-              </div>
-            ))}
-            {xTicks.map((tick) => (
-              <div className="study-scatter-vertical" key={tick} style={{ left: x(tick) }}>
-                <span>{decades.length >= 2 ? `$${tick}` : fmtUsdExact(tick)}</span>
-              </div>
-            ))}
-            {results.map((result) => {
-              const { row, cost, asr, ci, lowerBound } = result;
-              const highlighted = comparison !== null && (result === comparison || result === highestCost);
-              return (
-                <div key={row.run_id}>
-                  {ci && (
-                    <div
-                      className={`study-scatter-whisker${highlighted ? " study-scatter-highlight" : ""}`}
-                      style={{ left: x(cost), bottom: y(ci[0]), height: y(ci[1] - ci[0]) }}
-                    />
-                  )}
-                  <div
-                    className={`study-scatter-point${highlighted ? " study-scatter-highlight" : ""}${lowerBound ? " study-scatter-lower-bound" : ""}`}
-                    style={{ left: x(cost), bottom: y(asr) }}
-                    title={`${label(row)} · ${lowerBound ? "≥" : ""}${fmtUsdExact(cost)} · ${fmtPct(asr)}`}
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <p className="study-scatter-axis">Recorded serving cost (USD, log scale)</p>
-        </div>
-        <p className="study-chart-key">
-          Vertical lines show per-result 95% Wilson intervals.
-          {hasLowerBounds && <> Open circles mark cost lower bounds from unpriced calls.</>}
-          {comparison && <> Larger turquoise points mark the two results discussed.</>}
-        </p>
-        <details className="study-cost-data">
-          <summary>View {fmtInt(results.length)} results</summary>
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Result</th>
-                <th scope="col">Cost</th>
-                <th scope="col">Attack success <span>(95% CI)</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map(({ row, cost, asr, ci, lowerBound }) => (
-                <tr key={row.run_id}>
-                  <th scope="row"><a href={`/models/${modelSlug(row, allRows)}/`}>{label(row)}</a></th>
-                  <td>{lowerBound && "≥ "}{fmtUsdExact(cost)}</td>
-                  <td>{fmtPct(asr)} {ci && <span>{fmtCi(ci)}</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </details>
+        <StudyCostChart points={results.map((result) => {
+          const { row, cost, asr, ci, lowerBound, complete } = result;
+          return {
+            id: row.run_id,
+            mark: { ...markOf(row), glyph: vendorFamilyOf(row).glyph },
+            name: label(row),
+            slug: modelSlug(row, allRows),
+            cost,
+            asr,
+            ci,
+            coverage: lowerBound ? "lower-bound" : complete ? "complete" : "unknown",
+            highlighted: comparison !== null && (result === comparison || result === highestCost),
+          };
+        })} />
       </figure>
     </article>
   );

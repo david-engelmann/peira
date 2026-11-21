@@ -1,11 +1,13 @@
 "use client";
 
-import { useId, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useId, useRef, useState, type ComponentProps, type CSSProperties, type KeyboardEvent } from "react";
 import { fmtCi, fmtPct } from "@/lib/format";
+import Mark from "./Mark";
 import "./distribution-chart.css";
 
 interface DistributionResult {
   name: string;
+  mark: ComponentProps<typeof Mark>["mark"];
   href: string;
   rate: number;
   interval: [number, number] | null;
@@ -58,7 +60,7 @@ export default function DistributionChart({ results, featuredCount, summary }: {
           ))}
         </div>
         <div className="distribution-bars" style={{ "--bar-count": results.length } as CSSProperties}>
-          {results.map(({ href, interval, malformedShare, name, rate }, index) => (
+          {results.map(({ href, interval, malformedShare, mark, name, rate }, index) => (
             <button
               className="distribution-bar"
               data-featured={index < featuredCount}
@@ -67,7 +69,7 @@ export default function DistributionChart({ results, featuredCount, summary }: {
               type="button"
               tabIndex={active === index ? 0 : -1}
               aria-pressed={active === index}
-              aria-label={`${name}, ${fmtPct(rate)}${malformedShare ? `, ${malformedShare}` : ""}${interval ? `, 95% interval ${fmtCi(interval)}` : ""}`}
+              aria-label={`${name}, ${mark.label}, ${fmtPct(rate)}${malformedShare ? `, ${malformedShare}` : ""}${interval ? `, 95% interval ${fmtCi(interval)}` : ""}`}
               onPointerEnter={event => { if (event.pointerType === "mouse") setActive(index); }}
               onFocus={() => setActive(index)}
               onClick={() => setActive(index)}
@@ -82,18 +84,21 @@ export default function DistributionChart({ results, featuredCount, summary }: {
         <span>Lower rates</span><span>Higher rates</span>
       </div>
       <div className="distribution-readout">
-        <div className="distribution-selection">
-          <div className="distribution-result" role="status" aria-atomic="true">
-            <span className="distribution-name">{result.name}</span>
-            <span className="distribution-measure">
-              <b>{fmtPct(result.rate)}</b>
-              {result.malformedShare && <span> · {result.malformedShare}</span>}
-              {result.interval && <span> · 95% CI {fmtCi(result.interval)}</span>}
-            </span>
+        <div className="distribution-identity">
+          <Mark mark={result.mark} size={28} />
+          <div className="distribution-selection">
+            <div className="distribution-result" role="status" aria-atomic="true">
+              <span className="distribution-name">{result.name}<span className="provider-description">, {result.mark.label}</span></span>
+              <span className="distribution-measure">
+                <b>{fmtPct(result.rate)}</b>
+                {result.malformedShare && <span> · {result.malformedShare}</span>}
+                {result.interval && <span> · 95% CI {fmtCi(result.interval)}</span>}
+              </span>
+            </div>
+            <a className="distribution-link" href={result.href} aria-label={`Open result for ${result.name}, ${result.mark.label}`}>
+              Open result <span aria-hidden="true">↗</span>
+            </a>
           </div>
-          <a className="distribution-link" href={result.href} aria-label={`Open result for ${result.name}`}>
-            Open result <span aria-hidden="true">↗</span>
-          </a>
         </div>
         {results.length > 1 && (
           <div className="distribution-actions">

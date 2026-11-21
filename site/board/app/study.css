@@ -128,9 +128,12 @@ body { background: var(--ground); }
 
 .study .scene { border-top: 1px solid var(--line); }
 .study .scene.band::before { display: none; }
-.study-footer > div { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+.footer-bar, .footer-edition, .study-footer nav { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 22px; }
+.footer-bar { justify-content: space-between; }
+.footer-edition b { font-size: 17px; letter-spacing: -.035em; }
 .study-footer b { color: var(--ink); }
-.study-footer a { margin-left: auto; color: var(--accent); text-decoration: underline; }
+.study-footer a { display: inline-flex; gap: 4px; align-items: center; min-height: 32px; color: var(--accent); font-weight: 600; }
+.study-footer a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .study-footer details { margin-top: 12px; }
 .study-footer summary { cursor: pointer; width: fit-content; }
 @media (max-width: 870px) {

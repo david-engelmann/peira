@@ -88,6 +88,34 @@
   background: var(--explorer-paper);
 }
 
+.explorer .chart-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-bottom: 12px;
+}
+
+.explorer .chart-presets-label {
+  margin-right: 4px;
+  color: var(--ink-2);
+  font-size: .8125rem;
+  font-weight: 650;
+}
+
+.explorer .chart-presets .ghostbtn {
+  min-height: 36px;
+  border-radius: 8px;
+  font-size: .8125rem;
+}
+
+.explorer .chart-presets .ghostbtn[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--explorer-wash);
+  font-weight: 750;
+}
+
 .explorer .xfield {
   min-width: 0;
   gap: 5px;
@@ -513,6 +541,10 @@
 }
 
 @media (min-width: 1120px) {
+  .explorer .xcontrols:has(.chart-highlight) {
+    grid-template-columns: .8fr 1fr 1fr 1.4fr 1.25fr 1.2fr;
+  }
+
   .explorer .xcontrols:has(.xcheck) {
     grid-template-columns: .8fr 1fr 1fr 1.4fr 1.25fr auto 1.2fr;
   }
@@ -572,6 +604,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .explorer .chart-presets-label {
+    flex-basis: 100%;
+  }
+
   .explorer .explorer-views .segbtn {
     padding-inline: 10px;
   }
@@ -597,7 +633,7 @@
   }
 
   .explorer .xfam-bar {
-    grid-template-columns: minmax(88px, 36%) minmax(0, 1fr) 62px;
+    grid-template-columns: minmax(0, 38%) minmax(0, 1fr) 62px;
   }
 
   .explorer .xfam-val {
@@ -614,6 +650,7 @@
 
 @media (pointer: coarse) {
   .explorer .explorer-views .segbtn,
+  .explorer .chart-presets .ghostbtn,
   .explorer .xfield select,
   .explorer .xfield input,
   .explorer .model-filters summary,

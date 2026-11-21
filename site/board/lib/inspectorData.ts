@@ -96,7 +96,7 @@ export interface InspectorDatum {
   costSub: string | null;
   /** The cost state kind, so grouped surfaces keep the states apart. */
   costKind: CostState["kind"];
-  /** The flagged reason, with the decomposition clauses (C-5). */
+  /** The reason the run was excluded from ranking. */
   flaggedReason: string | null;
   /** The decomposition clauses alone, for carriers that state them apart. */
   decompText: string | null;
@@ -150,6 +150,14 @@ export function familyDecompText(famSplit: FlipDecomposition): string {
   return famSplit.flips === 0
     ? `Of its ${fmtInt(famSplit.flips)} counted flips, ${fmtInt(famSplit.malformedFlips)} went to malformed output, and its genuine flips are ${fmtPct(famSplit.genuineRate)} of its eligible cases.`
     : `Of its ${fmtInt(famSplit.flips)} counted flips, ${fmtInt(famSplit.malformedFlips)} went to malformed output, ${fmtPct(famSplit.malformedShare)} of its counted flips, and its genuine flips are ${fmtPct(famSplit.genuineRate)} of its eligible cases.`;
+}
+
+function exclusionReason(row: BoardRow): string {
+  const reason = row.reason?.replace(/^ranking-ineligible:\s*/i, "").trim();
+  if (reason === "malformed_rate above 5%" && row.malformed_rate != null && row.malformed_rate > 0.05) {
+    return `Excluded from ranking because ${fmtPct(row.malformed_rate)} malformed responses exceeded the 5% admission limit.`;
+  }
+  return reason ? `Excluded from ranking · ${reason.replaceAll("_", " ")}` : "Excluded from ranking.";
 }
 
 export function inspectorDatum(
@@ -293,14 +301,7 @@ export function inspectorDatum(
     costText,
     costSub,
     costKind: cost.kind,
-    flaggedReason:
-      kind === "flagged" && row.malformed_rate != null
-        ? `Its malformed response rate of ${fmtPct(row.malformed_rate)} is over the 5 percent admission limit, so it keeps every number and is not ranked.${
-            decomp !== null
-              ? ` Its genuine flips are ${fmtPct(decomp.genuineRate)} of its eligible cases, and ${fmtPct(decomp.malformedShare)} of its counted flips are to malformed output.`
-              : ""
-          }`
-        : null,
+    flaggedReason: kind === "flagged" ? exclusionReason(row) : null,
     decompText:
       kind === "flagged" && decomp !== null
         ? `genuine flips ${fmtPct(decomp.genuineRate)} of eligible cases, with ${fmtPct(decomp.malformedShare)} of counted flips to malformed output`

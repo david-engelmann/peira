@@ -490,29 +490,67 @@ button.xh.on { color: var(--accent); }
 
 .reading { border-top: 1px solid var(--line-soft); padding: 16px 16px 24px; }
 .reading-close { display: none; }
-.reading-figs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 24px; }
-.reading-figs > div { display: flex; flex-direction: column; gap: 4px; }
+.reading-figs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr));
+  gap: 12px 20px;
+  margin: 0;
+}
+.reading-figs dt { color: var(--ink-2); font-size: 13px; font-weight: 550; }
+.reading-figs dd { margin: 3px 0 0; }
 .reading-figs strong { font-size: 20px; font-weight: 750; font-variant-numeric: tabular-nums; }
-.rsub { color: var(--ink-3); font-size: 12.5px; }
+.rsub { display: block; color: var(--ink-2); font-size: 12.5px; }
 .reading-line { color: var(--ink-2); margin: 12px 0 0; max-width: 76ch; }
-/* Each severity segment sets as one unbreakable unit, so a
-   segment's base never orphans onto the next line alone. */
 .sevseg { white-space: nowrap; }
 .reading-line.flagged-line { color: var(--amber); }
-.reading-prov { color: var(--ink-3); font-size: 13.5px; margin: 12px 0 0; }
-/* The full record inside a reading (iteration 12). Ruled
-   data rows under a mono head, the reading's own grammar
-   extended to everything the payload carries. Family and
-   severity rows lead with the rate and its interval, then
-   state their counts, directions, and recorded figures as
-   sub lines. The run record states its facts as label and
-   value rows. The calibration strip plots one arm's
-   reliability bins against the diagonal at reading size. */
-.rdata { margin-top: 16px; border-top: 1px solid var(--line-soft); padding-top: 12px; }
-.rdata-head { color: var(--ink-3); margin: 0 0 4px; }
+.reading-prov { color: var(--ink-2); font-size: 13.5px; margin: 0 0 10px; }
+.flip-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+.flip-breakdown > div { min-width: 0; }
+.flip-breakdown dt { font-weight: 550; }
+.flip-breakdown dd { margin: 0; }
+.flip-breakdown strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.reading-body > .flip-breakdown {
+  gap: 6px 24px;
+  margin-top: 14px;
+  padding: 8px 12px;
+  background: var(--panel-2);
+  border-radius: var(--radius-ctl);
+}
+.rdata { border-top: 1px solid var(--line); }
+.rdata > summary {
+  display: grid;
+  grid-template-columns: 10px minmax(0, auto) 1fr;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 4px;
+  list-style: none;
+  cursor: pointer;
+  font-weight: 650;
+}
+.rdata > summary::-webkit-details-marker { display: none; }
+.rdata > summary::before, .reading-chevron {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  color: var(--ink-2);
+  transform: translateY(-2px) rotate(45deg);
+}
+.rdata[open] > summary::before, .xfam-head[aria-expanded="true"] .reading-chevron {
+  transform: translateY(1px) rotate(225deg);
+}
+.rdata-summary { text-align: right; color: var(--ink-2); font-size: 12.5px; font-weight: 400; }
 .drow { padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
 .drow:last-child { border-bottom: 0; }
-.drow-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.drow-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 16px; }
 .drow-name { font-weight: 650; }
 .drow-main { font-variant-numeric: tabular-nums; font-weight: 650; text-align: right; }
 .drow-ci { color: var(--ink-2); font-weight: 400; }
@@ -522,15 +560,16 @@ button.xh.on { color: var(--accent); }
 .calstrip-diag { stroke: var(--line); stroke-width: 1; }
 .calstrip-pt { fill: var(--accent); }
 .calstrip-tick { fill: var(--ink-3); font-size: 8px; font-family: "JetBrains Mono", monospace; }
-.rrow { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); font-size: 13.5px; }
+.reading-facts { margin: 0; }
+.rrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: baseline; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); font-size: 13.5px; }
 .rrow:last-child { border-bottom: 0; }
-.rrow > span { color: var(--ink-3); flex: 0 0 auto; }
-.rrow > strong { font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 400; text-align: right; overflow-wrap: anywhere; }
+.rrow > dt { color: var(--ink-2); }
+.rrow > dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
 .belowreading { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--shadow-1); }
 .belowreading .reading { border-top: 0; }
 
 .compare-head { display: flex; justify-content: space-between; align-items: center; }
-.compare-cols { display: grid; grid-template-columns: 1fr 250px 1fr; gap: 24px; margin-top: 12px; }
+.compare-cols { display: grid; grid-template-columns: minmax(0, 1fr) 250px minmax(0, 1fr); gap: 24px; margin-top: 12px; }
 .compare-name { display: flex; align-items: center; gap: 8px; font-weight: 700; margin: 0 0 12px; }
 .compare-deltas { display: flex; flex-direction: column; gap: 8px; }
 .delta-row { border: 1px solid var(--line-soft); border-radius: var(--radius-ctl); padding: 12px; background: var(--panel-2); }
@@ -647,11 +686,30 @@ button.xh.on { color: var(--accent); }
 
 .xfamilies .xfamrow { border: 1px solid var(--line-soft); border-radius: var(--radius); background: var(--panel); padding: 16px; margin: 0 0 8px; transition: border-color var(--dur-micro) ease; }
 .xfamilies .xfamrow:hover { border-color: var(--ink-3); }
-.xfam-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.xfam-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 4px 0 0;
+  border: 0;
+  border-radius: var(--radius-ctl);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.xfam-head:hover .xname { text-decoration: underline; text-underline-offset: 3px; }
+.xfam-head > .reading-chevron { flex: none; margin-left: 4px; }
 .xfam-head .xname { flex: 1; }
-.xfam-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin-top: 12px; }
-.xfam-bar { display: grid; grid-template-columns: 172px 1fr 100px; gap: 8px; align-items: center; }
-.xfam-label { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.provider-description, .xfam-screen-label { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+.xfam-bars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 12px 0 0; }
+.xfam-bar { display: grid; grid-template-columns: minmax(0, 40%) minmax(0, 1fr) 86px; gap: 4px 8px; align-content: start; align-items: center; }
+.xfam-key { font-size: 14px; color: var(--ink-2); margin: 0 0 16px; }
+.xfam-count { display: block; white-space: nowrap; color: var(--ink-3); font: 500 11px/1.5 "JetBrains Mono", monospace; }
+.xfam-bar > .flip-breakdown { grid-column: 1 / -1; }
+.xfam-label { font-size: 13px; font-weight: 550; color: var(--ink); overflow-wrap: anywhere; }
 /* The shared axis carries its quarter marks as gridlines
    inside every track, so a short bar reads against the same
    scale the axis row above the groups prints. */
@@ -659,21 +717,19 @@ button.xh.on { color: var(--accent); }
   height: 8px; background-color: var(--panel-2); border-radius: 999px; overflow: hidden;
   background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(25% - 1px), var(--line) calc(25% - 1px), var(--line) 25%);
 }
-.xfam-colhead { display: flex; justify-content: space-between; align-items: baseline; padding: 0 16px; margin-top: 12px; }
-.xfam-bars.axisrow { margin-top: 4px; }
-.xfam-bars.axisrow > div:empty { display: none; }
+.xfam-colhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 0 34px 0 16px; margin-top: 12px; }
+.xfam-bars.axisrow { margin: 6px 16px 10px; }
 .xfam-track.ghost { background: transparent; overflow: visible; height: 14px; position: relative; }
 .xfam-tick { position: absolute; top: 0; transform: translateX(-50%); font-size: 11.5px; color: var(--ink-3); font-family: "JetBrains Mono", monospace; }
 .xfam-tick.first { transform: none; }
 .xfam-tick.last { transform: translateX(-100%); }
 .xfam-fill { display: block; height: 100%; background: var(--accent); }
 .xfamrow.flagged .xfam-fill { background: var(--amber); }
-.xfam-val { font-size: 12.5px; text-align: right; color: var(--ink-2); }
-/* The decomposition sentence stands under its bar, so a
-   family rate never prints in this view without its split
-   beside it (C-5, per-family scope). It speaks prose, as
-   the readings do, and wraps inside the bar's own width. */
-.xfam-decomp { grid-column: 1 / -1; margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
+.xfam-val { font-size: 12.5px; font-weight: 600; text-align: right; color: var(--ink); }
+.xfamrow > .reading { margin-top: 12px; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+@media (max-width: 520px) {
+  .xfam-tick:nth-child(even) { display: none; }
+}
 
 .tray {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 55;
@@ -811,7 +867,6 @@ button.xh.on { color: var(--accent); }
     appearance: none; background: var(--panel-2); border: 1px solid var(--line);
     color: var(--ink); border-radius: var(--radius-ctl); padding: 8px 12px; font: inherit; font-size: 13.5px;
   }
-  .reading-figs { grid-template-columns: 1fr 1fr; }
   .xfam-bars { grid-template-columns: 1fr; }
   .tray {
     left: 16px; right: 16px; transform: none;
@@ -841,7 +896,7 @@ button.xh.on { color: var(--accent); }
   .model-redirect a { display: inline-flex; align-items: center; min-height: 44px; }
   .xfield select, .xfield input { min-height: 44px; }
   .xcheck { min-height: 44px; }
-  .xfam-head { min-height: 44px; }
+  .xfam-head, .rdata > summary { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   /* The designed branch. Anchor jumps are instant and the one
