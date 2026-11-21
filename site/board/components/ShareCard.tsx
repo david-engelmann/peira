@@ -1,7 +1,12 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import PeiraBrand from "./PeiraBrand";
 import type { ReactNode } from "react";
 import vendorData from "@/lib/vendor-data.json";
 
 export const cardColors = { ...vendorData.design, accent: vendorData.design.subjectFill };
+
+const symbol = `data:image/svg+xml;base64,${readFileSync(path.join(process.cwd(), "app/icon.svg")).toString("base64")}`;
 
 export function ShareCard({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -14,14 +19,7 @@ export function ShareCard({ label, children }: { label: string; children: ReactN
         display: "flex", justifyContent: "space-between", alignItems: "center",
         borderBottom: `1px solid ${cardColors.rule}`, paddingBottom: 17,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 4 }}>
-            <div style={{ width: 6, height: 9, backgroundColor: cardColors.field }} />
-            <div style={{ width: 6, height: 16, backgroundColor: cardColors.field }} />
-            <div style={{ width: 6, height: 23, backgroundColor: cardColors.accent }} />
-          </div>
-          <span style={{ fontSize: 36, fontWeight: 700, letterSpacing: "-1.6px" }}>peira</span>
-        </div>
+        <PeiraBrand symbol={symbol} ink={cardColors.ink} scale={1.2} />
         <span style={{ fontSize: 19, color: cardColors.quiet }}>{label}</span>
       </div>
       {children}

@@ -1,4 +1,6 @@
+import type { CSSProperties } from "react";
 import type { InspectorMark } from "@/lib/inspectorData";
+import { chipMarkColor } from "@/lib/vendorColors";
 
 /**
  * The vendor mark tile the explorer and the Flip share. The
@@ -11,25 +13,35 @@ import type { InspectorMark } from "@/lib/inspectorData";
 export default function Mark({
   mark,
   size = 26,
+  tinted = false,
 }: {
   mark: InspectorMark & { glyph: string };
   size?: number;
+  tinted?: boolean;
 }) {
-  const m = mark;
+  const style = {
+    width: size,
+    height: size,
+    ...(tinted
+      ? {
+          "--vc": mark.color,
+          "--vm-light": chipMarkColor(mark, "light"),
+          "--vm-dark": chipMarkColor(mark, "dark"),
+        }
+      : { background: mark.color, color: mark.glyph }),
+  } as CSSProperties;
   return (
     <span
-      className="xmark"
-      style={{ width: size, height: size, background: m.color }}
+      className={tinted ? "xmark vendor-chip" : "xmark"}
+      style={style}
       aria-hidden="true"
     >
-      {m.kind === "logo" && m.slug ? (
+      {mark.kind === "logo" && mark.slug ? (
         <svg width={size * 0.62} height={size * 0.62} viewBox="0 0 24 24">
-          <use href={`#vlogo-${m.slug}`} style={{ color: m.glyph }} />
+          <use href={`#vlogo-${mark.slug}`} />
         </svg>
       ) : (
-        <span className="xmark-letter" style={{ color: m.glyph }}>
-          {m.letter}
-        </span>
+        <span className="xmark-letter">{mark.letter}</span>
       )}
     </span>
   );

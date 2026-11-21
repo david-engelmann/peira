@@ -1696,18 +1696,16 @@ test("every vendor tint chip clears its contrast floor in both themes", () => {
   assert.match(css, /\.vendor-chip \{[^}]*color: light-dark\(var\(--vm-light\), var\(--vm-dark\)\);/);
 });
 
-test("the brand mark carries the system's radius and ink in both files", () => {
-  // The mark's field rect takes the panel radius from the
-  // ladder, and its bars take ink 1. The pre-convergence
-  // ink value and the off-ladder radius stand in neither
-  // the top bar nor the favicon file.
-  for (const rel of ["components/TopBar.tsx", "app/icon.svg"]) {
-    const src = read(rel);
-    assert.ok(src.includes('rx="10"'), `${rel} mark field is not at radius 10`);
-    assert.ok(!src.includes('rx="12"'), `${rel} still carries radius 12`);
-    assert.ok(src.includes("#EEF2F6"), `${rel} bars are not in ink 1`);
-    assert.ok(!src.includes("#E9EEF3"), `${rel} still carries the stale ink`);
-  }
+test("the masthead, favicon, share cards and README use the Peira signature", () => {
+  const icon = read("app/icon.svg");
+  const signature = read("components/PeiraBrand.tsx");
+  assert.match(icon, /viewBox="0 0 48 48"/);
+  assert.equal([...icon.matchAll(/<path fill=/g)].length, 3);
+  assert.ok(signature.includes('symbol = "/icon.svg"'));
+  assert.match(read("components/TopBar.tsx"), /<PeiraBrand \/>/);
+  assert.match(read("components/ShareCard.tsx"), /<PeiraBrand symbol=\{symbol\}/);
+  const readme = read("../../README.md");
+  for (const theme of ["light", "dark"]) assert.ok(readme.includes(`/peira-${theme}.svg`));
 });
 
 test("the masthead frost runs at the entrance duration, inside the cap", () => {
