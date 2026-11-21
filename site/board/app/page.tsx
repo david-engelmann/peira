@@ -35,7 +35,14 @@ export default function Home() {
       <Explorer data={explorerData()} />
       <MethodStub />
       <footer className="colophon study-footer">
-        <div><b>Peira</b><span>Dataset {versions.dataset} · Suite {versions.suite}</span><a href="/payload.json" download>Download data (JSON)</a></div>
+        <div className="footer-bar">
+          <div className="footer-edition"><b>Peira</b><span>Dataset {versions.dataset} · Suite {versions.suite}</span></div>
+          <nav aria-label="Project resources">
+            <a href="https://github.com/david-engelmann/peira">GitHub <span aria-hidden="true">↗</span></a>
+            <a href="https://github.com/david-engelmann/peira/blob/main/docs/Methodology.md">Methodology</a>
+            <a href="/payload.json" download>Download JSON <span aria-hidden="true">↓</span></a>
+          </nav>
+        </div>
         {dates.length > 0 && <details><summary>Run history</summary><p>{dates.length} results link to earlier runs. Their records are dated {dateWords(dates[0])}{dates[0] !== dates[dates.length - 1] && ` through ${dateWords(dates[dates.length - 1])}`}. Each result shows its own measurements and run history in the explorer.</p></details>}
       </footer>
     </main>

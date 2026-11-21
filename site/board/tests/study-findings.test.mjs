@@ -125,6 +125,15 @@ test("the study plots all priced ranked full-suite results and discloses their i
   assert.match(html, /claude-fable-5-1 · ≥\$130\.31 · 28\.5%/);
   assert.match(html, /at least <strong>\$130\.31<\/strong>/);
   assert.match(html, /href="#explorer\?pop=full&amp;mode=chart"/);
+  const points = [...html.matchAll(/<button class="study-scatter-point[^>]+>/g)].map(([tag]) => tag);
+  assert.equal(points.filter(tag => tag.includes('tabindex="0"')).length, 1);
+  assert.match(points.find(tag => tag.includes('aria-pressed="true"')), /gpt-6-luna · Decisions API/);
+  assert.match(html, /Cost coverage<select>/);
+  assert.match(html, /aria-pressed="false">Zoom below \$1/);
+  assert.match(html, /type="checkbox" checked=""\/>95% intervals/);
+  assert.match(html, /class="study-scatter-selection"[^>]*><strong><span class="xmark"/);
+  assert.match(html, /href="#result=gpt-6-luna-openai-decisions"/);
+  assert.match(html, /View data for 32 results/);
 });
 
 test("missing family records suppress the pooled finding while the cost finding remains", () => {
@@ -135,6 +144,8 @@ test("missing family records suppress the pooled finding while the cost finding 
   const html = renderStudy(payload);
   assert.doesNotMatch(html, /id="study-families-heading"/);
   assert.match(html, /id="study-cost-heading"/);
+  assert.match(html, /class="study-scatter-point study-scatter-unknown"/);
+  assert.match(html, />Coverage unknown<\/option>/);
 });
 
 test("result shares carry the reading's interval only when attack success is available", () => {
@@ -179,6 +190,8 @@ test("explorer preserves stored rates and intervals when the counts disagree", (
   const rawSeverity = sol.detail.severities.medium;
   rawSeverity.flip_rate_raw = 0.11;
   rawSeverity.flip_rate_ci95 = [0.09, 0.13];
+  const mercury = payload.unranked.find(row => row.adapter_version === "mercury-3");
+  mercury.detail.families.verbosity_inflation.asr = 0.65;
 
   const { explorerData } = loadBoard(payload, "lib/explorerData.ts");
   const { rows } = explorerData();
@@ -191,6 +204,9 @@ test("explorer preserves stored rates and intervals when the counts disagree", (
     .find(s => s.label === "Medium");
   assert.equal(severity.flipText, "11.0%");
   assert.equal(severity.ciText, "9.0% to 13.0%");
+  const flagged = rows.find(row => row.runId === mercury.run_id);
+  assert.equal(flagged.families.find(f => f.key === "verbosity_inflation").asr, null);
+  assert.equal(flagged.record.families.find(f => f.key === "verbosity_inflation").asrText, null);
 });
 
 test("a calibration arm shows zero confidence coverage when metrics are withheld", () => {
@@ -216,8 +232,28 @@ test("detailed readings disclose partial pricing, family flips, and unanswered-c
   const family = mercury.record.families.find(f => f.key === "verbosity_inflation");
   assert.equal(family.asrText, "62.6%");
   assert.match(family.decompText, /194 counted flips, 143 went to malformed output, 73\.7% of its counted flips, and its genuine flips are 16\.5% of its eligible cases/);
-  assert.equal(family.decompText, mercury.families.find(f => f.key === family.key).decompText);
   assert.match(family.metaText, /^\$0\.1372 \(lower bound, 551 of 940 calls priced\)/);
+
+  const { FamiliesView, ReadingBody } = loadBoard(payload, "components/Explorer.tsx");
+  const familiesHtml = renderToStaticMarkup(createElement(FamiliesView, {
+    groups: [{ kind: "flagged", rows: [mercury] }],
+    data: { rows },
+    expanded: null,
+    onToggle: () => {},
+  }));
+  assert.match(familiesHtml, /Verbosity Inflation.*?62\.6%.*?Malformed flips<\/dt><dd><strong>143<\/strong> of 194 counted flips \(73\.7%\).*?Genuine flips<\/dt><dd><strong>16\.5%<\/strong> of 310 eligible cases/i);
+
+  const leader = rows.find(row => row.slug === "gemini-4-argon");
+  const compact = renderToStaticMarkup(createElement(FamiliesView, {
+    groups: [{ kind: "full", rows: [leader] }], data: { rows }, expanded: null, onToggle() {},
+  }));
+  assert.match(compact, /359 genuine flips in 441 eligible cases, zero malformed flips">359 \/ 441/);
+  assert.doesNotMatch(compact, /<dt>Malformed flips<\/dt>/);
+  const readingHtml = renderToStaticMarkup(createElement(ReadingBody, { row: mercury }));
+  assert.match(readingHtml, /<summary><span>Attack families<\/span>.*?551 of 940 calls priced/);
+  assert.match(readingHtml, /<summary><span>Severity<\/span>/);
+  assert.match(readingHtml, /<summary><span>Calibration<\/span>/);
+  assert.match(readingHtml, /<summary><span>Run record and provenance<\/span><\/summary>.*?<dt>Manifest<\/dt>.*?Cases with neither call answered/);
 
   const argon = rows.find(row => row.slug === "gemini-4-argon");
   const fullyPriced = argon.record.families.find(f => f.key === family.key);

@@ -13,6 +13,7 @@ import {
   flipDecomposition,
   splitDisplayName,
   type BoardRow,
+  type FlipDecomposition,
 } from "@/lib/payload";
 import {
   fmtCi,
@@ -33,7 +34,7 @@ import {
   familyOrder,
   FAMILY_SHORT,
 } from "@/lib/charts";
-import { provenanceOf, runDateWords, severitiesOf } from "@/lib/cards";
+import { runDateWords, severitiesOf } from "@/lib/cards";
 import {
   familyDecompText,
   inspectorDataAll,
@@ -45,15 +46,8 @@ export interface XFamily {
   short: string;
   full: string;
   asr: number | null;
-  /**
-   * The family's decomposition sentence, in the words the
-   * weakest family sentence uses, built by the inspector
-   * layer's one per-family construction. Null where the
-   * family's records derive no decomposition. The families
-   * view prints no family rate without this sentence
-   * standing under its bar (C-5, per-family scope).
-   */
-  decompText: string | null;
+  /** The counts and the two bases displayed alongside the family's rate. */
+  decomp: (FlipDecomposition & { nEligible: number }) | null;
 }
 
 export interface XRow {
@@ -101,12 +95,7 @@ export interface XRow {
   vendorLabel: string;
   profile: ReturnType<typeof modelProfile>;
   /** Counted flips and their split, where the records derive one. */
-  decomp: {
-    flips: number;
-    malformedFlips: number;
-    malformedShare: number;
-    genuineRate: number;
-  } | null;
+  decomp: FlipDecomposition | null;
   families: XFamily[];
   weakestFamily: {
     name: string;
@@ -120,7 +109,6 @@ export interface XRow {
     brierText: string;
     bins: Array<{ x: number; y: number; n: number }>;
   } | null;
-  provenanceLine: string;
   /** The full record behind the reading's summary lines. */
   record: XRecord;
   rerunText: string | null;
@@ -231,6 +219,7 @@ function familyDetailOf(
   famOrder: string[],
   stats: ReturnType<typeof familiesOf>,
   splits: ReturnType<typeof familyFlipDecomposition>,
+  flagged: boolean,
 ): XFamilyDetail[] {
   const fams = recOrEmpty(recOrEmpty(row.detail).families);
   const out: XFamilyDetail[] = [];
@@ -238,9 +227,9 @@ function familyDetailOf(
     const f = recOrEmpty(fams[key]);
     if (Object.keys(f).length === 0) continue;
     const stat = stats.get(key);
-    const asr = stat?.asr ?? null;
-    const ci = stat?.asrCi95 ?? null;
     const split = splits.get(key);
+    const asr = flagged && !split ? null : (stat?.asr ?? null);
+    const ci = asr !== null ? (stat?.asrCi95 ?? null) : null;
     const n = numOrNull(f.n);
     const nFlipped = numOrNull(f.n_flipped);
     const nEligible = numOrNull(f.n_eligible);
@@ -528,12 +517,6 @@ function shapeRow(
   const famDecomp = familyFlipDecomposition(row);
   const decomp = flipDecomposition(row);
   const cal = calibrationOf(row);
-  const prov = provenanceOf(row);
-  const provParts = [
-    prov.adapterName,
-    `run ${runDateWords(row)}`,
-    prov.manifestSha256 ? `manifest ${prov.manifestSha256.slice(0, 12)}…` : null,
-  ].filter((p): p is string => p !== null && p !== "");
   return {
     runId: row.run_id,
     slug: datum.slug,
@@ -575,24 +558,20 @@ function shapeRow(
     vendorKey: vendorFamilyOf(row).key,
     vendorLabel: vendorFamilyOf(row).label,
     profile: modelProfile(row),
-    decomp:
-      decomp === null
-        ? null
-        : {
-            flips: decomp.flips,
-            malformedFlips: decomp.malformedFlips,
-            malformedShare: decomp.malformedShare,
-            genuineRate: decomp.genuineRate,
-          },
+    decomp,
     families: famOrder.map((key) => {
+      const stat = fams.get(key);
       const famSplit = famDecomp.get(key) ?? null;
+      const nEligible = stat?.nEligible ?? null;
+      const split = famSplit !== null && nEligible !== null
+        ? { ...famSplit, nEligible }
+        : null;
       return {
         key,
         short: FAMILY_SHORT[key] ?? familyFullName(key),
         full: familyFullName(key),
-        asr: fams.get(key)?.asr ?? null,
-        decompText:
-          famSplit !== null ? familyDecompText(famSplit) : null,
+        asr: datum.kind === "flagged" && split === null ? null : (stat?.asr ?? null),
+        decomp: split,
       };
     }),
     weakestFamily: datum.weakestFamily,
@@ -614,9 +593,8 @@ function shapeRow(
               n: b.n,
             })),
           },
-    provenanceLine: provParts.join(" · "),
     record: {
-      families: familyDetailOf(row, famOrder, fams, famDecomp),
+      families: familyDetailOf(row, famOrder, fams, famDecomp, datum.kind === "flagged"),
       severities: severityDetailOf(row, severities),
       calibration: calibrationDetailOf(row),
       runFacts: runFactsOf(row),

@@ -343,11 +343,8 @@ test("the explorer mercury surfaces state the genuine basis", () => {
       "and its genuine flips are ${fmtPct(row.decomp.genuineRate)} of its eligible cases.",
     ),
   );
-  assert.ok(
-    explorer.includes(
-      "genuine flips ${fmtPct(d.genuineRate)} of ${fmtInt(row.nEligible)} eligible cases",
-    ),
-  );
+  assert.ok(explorer.includes("d={row.decomp} nEligible={row.nEligible}"));
+  assert.ok(explorer.includes("{fmtPct(d.genuineRate)}</strong> of {fmtInt(nEligible)} eligible cases"));
   assert.ok(
     explorer.includes(
       "{fmtPct(chipRow.decomp.genuineRate)} of eligible cases",
@@ -357,20 +354,18 @@ test("the explorer mercury surfaces state the genuine basis", () => {
   assert.ok(!explorer.includes("genuine flip rate ${"));
 });
 
-test("the flagged reading states both decomposition bases", () => {
+test("the flagged reading pairs the ranking exclusion with both decomposition bases", () => {
   const inspector = read("lib/inspectorData.ts");
-  // The flagged reason sets the genuine figure and the
-  // malformed share in one sentence. The genuine figure is a
-  // share of eligible cases and the malformed figure a share
-  // of counted flips, and the sentence now names each basis
-  // on its own figure, so the two numbers cannot be read on
-  // one basis. The decomposition text, rendered by no
-  // component today, carries the same two bases so no future
-  // render inherits the ambiguity.
+  const explorer = read("components/Explorer.tsx");
   assert.ok(
-    inspector.includes(
-      "Its genuine flips are ${fmtPct(decomp.genuineRate)} of its eligible cases, and ${fmtPct(decomp.malformedShare)} of its counted flips are to malformed output.",
-    ),
+    inspector.includes("malformed responses exceeded the 5% admission limit"),
+  );
+  assert.ok(explorer.includes("{row.flaggedReason}"));
+  assert.ok(explorer.includes("d={row.decomp} nEligible={row.nEligible}"));
+  assert.ok(explorer.includes("{fmtInt(d.flips)} counted flips"));
+  assert.ok(explorer.includes("{fmtPct(d.malformedShare)}"));
+  assert.ok(
+    explorer.includes("{fmtPct(d.genuineRate)}</strong> of {fmtInt(nEligible)} eligible cases"),
   );
   assert.ok(
     inspector.includes(
@@ -933,7 +928,7 @@ test("the reading states the bases its figures rest on", () => {
   // calibration error its scale, and the latency its median
   // per attacked call, matching the payload's p50 field.
   assert.ok(
-    explorer.includes("of ${fmtInt(row.nEligible)} eligible cases"),
+    explorer.includes("of {fmtInt(nEligible)} eligible cases"),
   );
   assert.ok(explorer.includes("On a 0 to 1 scale"));
   assert.ok(explorer.includes("Median latency"));
@@ -1223,7 +1218,8 @@ test("the weakest family sentence carries its malformed decomposition, re-derive
     inspector.includes("went to malformed output, and its genuine flips are"),
   );
   const explorer = read("components/Explorer.tsx");
-  assert.ok(explorer.includes("row.weakestFamily.decompText"));
+  assert.ok(explorer.includes("const weakest = row.weakestFamily;"));
+  assert.ok(explorer.includes("{f.decompText}"));
 });
 
 test("the families view carries every family's malformed decomposition, re-derived", () => {
@@ -1480,22 +1476,18 @@ test("the families view carries every family's malformed decomposition, re-deriv
     produceDecomp(deriveSplit(graniteRp), fmtIntT, fmtPctT),
     "Of its 0 counted flips, 0 went to malformed output, and its genuine flips are 0.0% of its eligible cases.",
   );
-  // The wiring. The explorer data layer derives each
-  // family's own split and builds its sentence through
-  // the shared construction, and the view renders the
-  // sentence under the family's bar, in the page's text
-  // and not only in the bar's title.
+  // The Explorer keeps the independently derived split beside
+  // the measured rate and reuses the same display as the run.
   const explorerData = read("lib/explorerData.ts");
   assert.ok(
     explorerData.includes("const famDecomp = familyFlipDecomposition(row);"),
   );
   assert.ok(
-    explorerData.includes("famSplit !== null ? familyDecompText(famSplit) : null"),
+    explorerData.includes("{ ...famSplit, nEligible }"),
   );
   const explorer = read("components/Explorer.tsx");
-  assert.ok(explorer.includes("fam.decompText"));
-  assert.ok(explorer.includes('className="xfam-decomp"'));
-  assert.match(css, /\.xfam-decomp \{ grid-column: 1 \/ -1;/);
+  assert.ok(explorer.includes("d={fam.decomp} nEligible={fam.decomp.nEligible}"));
+  assert.match(css, /\.xfam-bar > \.flip-breakdown \{ grid-column: 1 \/ -1;/);
 });
 
 test("the families mode prints full names against a labelled scale", () => {
@@ -1505,10 +1497,7 @@ test("the families mode prints full names against a labelled scale", () => {
   assert.ok(explorer.includes("Not measured"));
   assert.ok(explorer.includes("Overall attack success"));
   assert.ok(explorer.includes("[0, 0.25, 0.5, 0.75, 1]"));
-  assert.match(
-    css,
-    /\.xfam-bar \{ display: grid; grid-template-columns: 172px 1fr 100px;/,
-  );
+  assert.match(css, /\.xfam-label \{[^}]*overflow-wrap: anywhere;/);
   assert.match(css, /repeating-linear-gradient\(to right/);
 });
 
@@ -2005,7 +1994,7 @@ test("the subject label plate is remeasured whenever the scales move", () => {
   // effect behind it relies on.
   assert.ok(
     explorer.includes(
-      "}, [subjectId, width, fontsReady, drag, lo, hi, axisMax]);",
+      "}, [subjectId, width, fontsReady, drag, lo, hi, axisMax, costAxis]);",
     ),
   );
   const plateEffect = explorer.indexOf("The subject label plate, measured at render time");

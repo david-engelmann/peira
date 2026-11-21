@@ -1,9 +1,12 @@
 import CoverField from "@/components/CoverField";
 import {
-  boardDateWords, boardGroups, displayCi, duplicateShortNames, flipDecomposition,
+  boardDateIso, boardDateWords, boardGroups, displayCi, duplicateShortNames, flipDecomposition,
   modelCounts, modelSlug, shortName, wireWords,
 } from "@/lib/payload";
 import { fmtCi, fmtInt, fmtPct } from "@/lib/format";
+import { markOf } from "@/lib/inspectorData";
+import { vendorFamilyOf } from "@/lib/vendorColors";
+import Mark from "./Mark";
 import DistributionChart from "./DistributionChart";
 
 function malformedShareText(flips: ReturnType<typeof flipDecomposition>): string | null {
@@ -27,6 +30,7 @@ export default function Headline() {
   const chartResults = comparisons.map(({ row, rate }) => {
     const name = shortName(row);
     return {
+      mark: { ...markOf(row), glyph: vendorFamilyOf(row).glyph },
       name: duplicates.has(name) ? `${name} · ${wireWords(row.wire)}` : name,
       href: `#result=${encodeURIComponent(modelSlug(row, all))}`,
       rate,
@@ -61,7 +65,7 @@ export default function Headline() {
         )}
       </div>
       {best && worst && <figure className="field-plate" aria-labelledby="distribution-title">
-        <div className="plate-dateline"><span>Full suite · {fmtInt(comparisons.length)} ranked results</span><time>{boardDateWords()}</time></div>
+        <div className="plate-dateline"><span>Full suite · {fmtInt(comparisons.length)} ranked results</span><time dateTime={boardDateIso()}>Latest run · {boardDateWords()}</time></div>
         <h2 id="distribution-title">Attack success across the field</h2>
         <p>Share of eligible cases. Lower is better.</p>
         <DistributionChart
@@ -71,9 +75,9 @@ export default function Headline() {
         />
         <div className="plate-key"><span>Lowest observed rates</span><span>95% interval</span></div>
         <ol>
-          {featured.map(({ href, name, rate, interval, malformedShare }) => (
+          {featured.map(({ href, name, mark, rate, interval, malformedShare }) => (
             <li key={href}>
-              <a href={href}>{name}</a>
+              <a className="plate-model" href={href}><Mark mark={mark} size={22} />{name}</a>
               <strong>{fmtPct(rate)}{malformedShare && <span> · {malformedShare}</span>}</strong>
               <span>{interval ? fmtCi(interval) : "Unavailable"}</span>
             </li>

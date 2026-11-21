@@ -197,7 +197,26 @@ const overview = await browser.newPage();
 await overview.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
 await overview.goto(base, { waitUntil: "networkidle0" });
 const bars = await overview.$$(".distribution-bar");
+const overviewMeta = await overview.evaluate(() => {
+  const edition = document.querySelector(".plate-dateline time");
+  const marks = [...document.querySelectorAll(".field-plate ol .xmark")];
+  return {
+    day: edition?.dateTime,
+    label: edition?.textContent,
+    marksResolved: marks.every(mark => {
+      const symbol = mark.querySelector("use")?.getAttribute("href");
+      return symbol ? !!document.getElementById(symbol.slice(1)) : !!mark.textContent.trim();
+    }),
+    count: marks.length,
+    repo: document.querySelector('.study-footer a[href*="github.com"]')?.href,
+  };
+});
+const newest = rows.map(row => row.created_utc).sort().at(-1).slice(0, 10);
+if (overviewMeta.day !== newest || !overviewMeta.label?.includes("Latest run")) fail("overview date must identify the latest run");
+if (overviewMeta.repo !== "https://github.com/david-engelmann/peira") fail("the footer must link to Peira's repository");
 const rankedRates = full.filter(row => row.asr_conditional !== null);
+if (!overviewMeta.marksResolved || overviewMeta.count !== Math.min(3, rankedRates.length)) fail("featured models must show their provider marks");
+else pass("featured provider marks resolve, and the overview identifies its latest run and repository");
 if (bars.length !== rankedRates.length) fail("the interactive field omits a ranked rate");
 if (bars.length > 1) {
   await bars[0].focus();
@@ -214,6 +233,28 @@ if (bars.length > 1) {
     pass("keyboard and step controls link the inspected field result to its record");
   }
 }
+await overview.select(".study-scatter-coverage select", "complete");
+await overview.click(".study-scatter-controls button");
+const costRows = await overview.$$eval(".study-cost-data tbody tr", entries =>
+  entries.map(entry => entry.querySelector("td").textContent));
+if (!costRows.length || costRows.some(cell => !cell.includes("Fully priced") || parseFloat(cell.slice(1)) >= 1)) {
+  fail("the price zoom and coverage filter must restrict the visible data table");
+}
+await overview.click(".study-scatter-toggle input");
+if (await overview.$(".study-scatter-whisker")) fail("the interval control must hide the whiskers");
+await overview.focus('.study-scatter-point[tabindex="0"]');
+await overview.keyboard.press("End");
+const lastCostSlug = await overview.$eval(".study-cost-data tbody tr:last-child a", link => link.pathname.split("/")[2]);
+if (await overview.$eval(".study-scatter-readout a", link => link.hash) !== `#result=${lastCostSlug}`) {
+  fail("keyboard inspection must open the highest-cost visible run");
+} else pass("the study cost plot filters, zooms, toggles intervals and opens the inspected result");
+await overview.goto(base + "/#explorer?pop=full&mode=chart", { waitUntil: "networkidle0" });
+await clickText(overview, "Benign accuracy", ".chart-presets button");
+await overview.waitForFunction(() => new URLSearchParams(location.hash.split("?")[1]).get("axis") === "benign");
+await overview.reload({waitUntil: "networkidle0"});
+const preset = await overview.$eval('.chart-presets [aria-pressed="true"]', button => button.textContent);
+if (preset !== "Benign accuracy") fail("the accuracy axis must survive a shared-link reload");
+else pass("the accuracy plot can be selected and restored from its URL");
 await overview.close();
 
 /* The chart and its linked selections must agree on their population and median. */

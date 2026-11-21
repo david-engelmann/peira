@@ -96,7 +96,7 @@ export interface InspectorDatum {
   costSub: string | null;
   /** The cost state kind, so grouped surfaces keep the states apart. */
   costKind: CostState["kind"];
-  /** The flagged reason, with the decomposition clauses (C-5). */
+  /** The reason the run was excluded from ranking. */
   flaggedReason: string | null;
   /** The decomposition clauses alone, for carriers that state them apart. */
   decompText: string | null;
@@ -295,11 +295,7 @@ export function inspectorDatum(
     costKind: cost.kind,
     flaggedReason:
       kind === "flagged" && row.malformed_rate != null
-        ? `Its malformed response rate of ${fmtPct(row.malformed_rate)} is over the 5 percent admission limit, so it keeps every number and is not ranked.${
-            decomp !== null
-              ? ` Its genuine flips are ${fmtPct(decomp.genuineRate)} of its eligible cases, and ${fmtPct(decomp.malformedShare)} of its counted flips are to malformed output.`
-              : ""
-          }`
+        ? `Excluded from ranking because ${fmtPct(row.malformed_rate)} malformed responses exceeded the 5% admission limit.`
         : null,
     decompText:
       kind === "flagged" && decomp !== null

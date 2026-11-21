@@ -16,9 +16,9 @@ Peira measures how often an AI model changes a correct decision when the same ca
 
 ## Live results
 
-The November 18, 2026 release covers **4,701 paired cases** and **41 ranked full-suite results**. The same case can contribute once per run. Fabricated retrieved documents accounted for **41.0% of counted flips** across those runs and **9.9% of eligible cases**. [Explore the attack families](https://peiratrial.dev/#findings)
+The benchmark’s latest run is dated November 18, 2026. The study covers **4,701 paired cases** and **41 ranked full-suite results**. The same case can contribute once per run. Fabricated retrieved documents accounted for **41.0% of counted flips** across those runs and **9.9% of eligible cases**. [Explore the attack families](https://peiratrial.dev/#findings)
 
-The explorer keeps each model and its interface visible. GPT-6 Luna, for example, ran through both a typed Decisions API and Chat Completions. Compare the two results on the same cases, inspect their intervals, or filter for specialists, local inference and downloadable weights. Guard models have a separate ranking on the abstention subset. [Open the explorer](https://peiratrial.dev/#explorer) · [Read the scoring method](https://peiratrial.dev/#method)
+The explorer keeps each model and its interface visible. GPT-6 Luna, for example, ran through both a typed Decisions API and Chat Completions. Switch between run cost and benign accuracy, inspect individual results, or filter for specialists, local inference and downloadable weights. Guard models have a separate ranking on the abstention subset. [Open the explorer](https://peiratrial.dev/#explorer) · [Read the scoring method](https://peiratrial.dev/#method)
 
 <a href="https://peiratrial.dev/#explorer?pop=full&amp;mode=chart&amp;kind=general&amp;serving=hosted">
   <picture>
