@@ -205,10 +205,13 @@ jobs:
                       continue
                   # A directory or glob source landing on the image
                   # root or the pin path can carry a namesake pin the
-                  # basename scan cannot see into; fail safe.
+                  # basename scan cannot see into; fail safe. A bare
+                  # extensionless name is opaque for the same reason:
+                  # flat text cannot tell a directory from a file.
                   if dest_is_root or dest_is_pin:
-                      if any(s.endswith("/") or s in (".", "./") or any(g in s for g in "*?[") for s in sources):
-                          fail("Dockerfile copies a directory or glob source onto the image root; "
+                      if any(s.endswith("/") or s in (".", "./") or any(g in s for g in "*?[")
+                             or "." not in base(s) for s in sources):
+                          fail("Dockerfile copies a directory, glob, or extensionless source onto the image root; "
                                "the checker cannot verify it does not replace rust-toolchain.toml")
                           continue
                   if not pin_sources and not dest_is_pin:
@@ -256,35 +259,70 @@ jobs:
                       continue
                   plain = re.sub(r"(?i)^\s*RUN\s+", "", plain)
                   rewritten = bool(re.search(r">\s*\S*rust-toolchain\.toml\b", plain))
+                  if re.search(r"open\([^)]*,\s*[wa]\b|\.write\(", plain):
+                      rewritten = True
                   for segment in re.split(r"&&|;|\|", plain):
                       segment = segment.split(">", 1)[0].split("#", 1)[0]
                       toks = [t.strip("()") for t in segment.split()]
                       toks = [t for t in toks if t]
+                      # Skip assignment and wrapper prefixes and any
+                      # path qualification, so the verb seen is the
+                      # command that actually runs.
+                      while toks and ("=" in toks[0] or base(toks[0]) in ("env", "command", "busybox", "sudo")):
+                          toks = toks[1:]
                       if not toks:
                           continue
-                      verb, rest = toks[0], toks[1:]
+                      verb, rest = base(toks[0]), toks[1:]
                       plain_args = [t for t in rest if not t.startswith("-")]
-                      if verb in ("cp", "mv", "ln", "install"):
+                      if verb in ("cp", "mv", "ln", "install", "rsync"):
                           if len(plain_args) >= 2 and base(plain_args[-1]) == "rust-toolchain.toml":
                               rewritten = True
+                          for i, t in enumerate(rest):
+                              tdir = None
+                              if t in ("-t", "--target-directory") and i + 1 < len(rest):
+                                  tdir = rest[i + 1]
+                              elif t.startswith("--target-directory="):
+                                  tdir = t.split("=", 1)[1]
+                              elif t.startswith("-t") and len(t) > 2:
+                                  tdir = t[2:]
+                              if tdir in (".", "./", workdir, workdir + "/") and \
+                                      any(base(a) == "rust-toolchain.toml" for a in plain_args):
+                                  rewritten = True
                       elif verb == "tee":
                           if any(base(t) == "rust-toolchain.toml" for t in plain_args):
                               rewritten = True
                       elif verb == "dd":
                           if any(t.startswith("of=") and base(t[3:]) == "rust-toolchain.toml" for t in rest):
                               rewritten = True
-                      elif verb == "sed":
+                      elif verb in ("sed", "perl"):
                           inplace = any(t == "-i" or t.startswith("--in-place")
                                         or (t.startswith("-i") and not t.startswith("--")) for t in rest)
                           if inplace and any(base(t) == "rust-toolchain.toml" for t in plain_args):
                               rewritten = True
-                      if verb in ("python3", "python", "perl", "ruby", "node") and "rust-toolchain.toml" in segment:
-                          rewritten = True
+                      elif verb in ("curl", "wget"):
+                          for i, t in enumerate(rest):
+                              value = None
+                              if t in ("-o", "-O", "--output") and i + 1 < len(rest):
+                                  value = rest[i + 1]
+                              elif t.startswith("--output="):
+                                  value = t.split("=", 1)[1]
+                              elif re.fullmatch(r"-[a-zA-Z]*[oO]", t) and i + 1 < len(rest):
+                                  value = rest[i + 1]
+                              else:
+                                  glued = re.fullmatch(r"-[a-zA-Z]*[oO]=(.*)", t) or \
+                                          re.fullmatch(r"-[a-zA-Z]*[oO](.+)", t)
+                                  if glued:
+                                      value = glued.group(1)
+                              if value is not None and base(value) == "rust-toolchain.toml":
+                                  rewritten = True
                   if rewritten:
                       fail("Dockerfile rewrites rust-toolchain.toml in a later step; "
                            "the pin must be the repository's own file")
               if re.search(r"\.rustup/settings\.toml", flat):
                   fail("Dockerfile mentions rustup's settings.toml, where directory overrides beat rust-toolchain.toml; "
+                       "rust-toolchain.toml must stay the single source")
+              if "RUSTUP_HOME" in flat and re.search(r"settings\.toml", flat):
+                  fail("Dockerfile relocates RUSTUP_HOME and mentions a settings.toml, where directory overrides beat rust-toolchain.toml; "
                        "rust-toolchain.toml must stay the single source")
               for dt in re.finditer(r"--default-toolchain[=\s]+(\S+)", flat):
                   if dt.group(1) != "none":
