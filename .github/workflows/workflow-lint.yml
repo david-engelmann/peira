@@ -117,11 +117,14 @@ jobs:
     #     A Dockerfile rust-builder stage's FROM tag must equal it. A
     #     single-stage Dockerfile instead installs Rust via rustup and
     #     must copy rust-toolchain.toml into the image before the build
-    #     step, with no --default-toolchain override and no
-    #     RUSTUP_TOOLCHAIN override, so the file still selects the
-    #     toolchain. Either way, no workflow may override
-    #     dtolnay/rust-toolchain with an explicit version input (the
-    #     action honors rust-toolchain.toml).
+    #     step, and the checker also guards the ways the pin could be
+    #     silently displaced: a later step rewriting the file, a legacy
+    #     rust-toolchain file (which rustup prefers over the .toml),
+    #     a supplied settings.toml, rustup default or override, a
+    #     --default-toolchain other than none, and RUSTUP_TOOLCHAIN.
+    #     Either way, no workflow may override dtolnay/rust-toolchain
+    #     with an explicit version input (the action honors
+    #     rust-toolchain.toml).
     #   - Python build backend: pyproject.toml [build-system] is the
     #     source. No consumer (workflows, Dockerfile) may invoke maturin
     #     unless the declared backend is maturin.
@@ -188,13 +191,13 @@ jobs:
                   if build_m is None or wm.start() < build_m.start():
                       workdir = wm.group(1)
               pin_copy = None
+              base = lambda p: p.rstrip("/").rsplit("/", 1)[-1]
               for cm in re.finditer(r"^(?:COPY|ADD)\s+([^\n]*)$", flat, re.M | re.I):
                   args = [t.strip('[]",') for t in cm.group(1).split()]
                   paths = [a for a in args if a and not a.startswith("--")]
                   if len(paths) < 2:
                       continue
                   sources, dest = paths[:-1], paths[-1]
-                  base = lambda p: p.rstrip("/").rsplit("/", 1)[-1]
                   pin_sources = [s for s in sources if base(s) == "rust-toolchain.toml"]
                   dest_is_root = dest in (".", "./") or dest == workdir or dest == workdir + "/"
                   dest_is_pin = base(dest) == "rust-toolchain.toml" and not dest_is_root
@@ -263,8 +266,9 @@ jobs:
               # rust-toolchain.toml when both are present. Quotes are
               # stripped first, so a quoted destination is seen
               # plainly.
-              root_dirs = (".", "./", workdir, workdir + "/", workdir + "/.",
+              root_dirs = (".", "./", "./.", workdir, workdir + "/", workdir + "/.",
                            "$PWD", "${PWD}", "$PWD/", "${PWD}/", "$PWD/.", "${PWD}/.")
+              wrappers = ("env", "command", "busybox", "sudo", "timeout", "nohup", "nice", "stdbuf", "setsid")
               for line in flat.splitlines():
                   stripped = line.strip()
                   if not stripped or stripped.startswith("#"):
@@ -291,7 +295,6 @@ jobs:
                           # any path qualification, so the verb seen is
                           # the command that actually runs.
                           seen_wrapper = False
-                          wrappers = ("env", "command", "busybox", "sudo", "timeout", "nohup", "nice", "stdbuf", "setsid")
                           while toks and ("=" in toks[0] or re.fullmatch(r"\d+[a-z]?", toks[0])
                                           or base(toks[0]) in wrappers
                                           or (seen_wrapper and (toks[0].startswith("-")
