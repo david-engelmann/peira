@@ -235,7 +235,7 @@ function CostFinding({ rows, allRows }: { rows: BoardRow[]; allRows: BoardRow[] 
         <p className="study-chart-key">
           Vertical lines show per-result 95% Wilson intervals.
           {hasLowerBounds && <> Open circles mark cost lower bounds from unpriced calls.</>}
-          {comparison && <> Teal points mark the two results discussed.</>}
+          {comparison && <> Larger turquoise points mark the two results discussed.</>}
         </p>
         <details className="study-cost-data">
           <summary>View {fmtInt(results.length)} results</summary>

@@ -192,6 +192,30 @@ for (const width of [360, 480, 768, 1024, 1280, 1600]) {
 }
 pass("six widths render both analyses, the explorer and Method, with no overflow");
 
+/* Inspecting the field with a keyboard must update the same record link as the step controls. */
+const overview = await browser.newPage();
+await overview.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
+await overview.goto(base, { waitUntil: "networkidle0" });
+const bars = await overview.$$(".distribution-bar");
+const rankedRates = full.filter(row => row.asr_conditional !== null);
+if (bars.length !== rankedRates.length) fail("the interactive field omits a ranked rate");
+if (bars.length > 1) {
+  await bars[0].focus();
+  await overview.keyboard.press("End");
+  const href = await overview.$eval(".distribution-link", el => el.getAttribute("href"));
+  if (href !== `#result=${modelSlug(rankedRates.at(-1))}`) fail("the last bar opens the wrong result");
+  await overview.click('.distribution-actions button[aria-label="Next result"]');
+  const first = await overview.$eval(".distribution-link", el => el.getAttribute("href"));
+  if (first !== `#result=${modelSlug(rankedRates[0])}`) fail("stepping past the last bar opens the wrong result");
+  if (await overview.$eval(".field-plane svg", el => getComputedStyle(el).animationName) !== "none") {
+    fail("the cover animates under reduced motion");
+  }
+  if (href === `#result=${modelSlug(rankedRates.at(-1))}` && first === `#result=${modelSlug(rankedRates[0])}`) {
+    pass("keyboard and step controls link the inspected field result to its record");
+  }
+}
+await overview.close();
+
 /* The chart and its linked selections must agree on their population and median. */
 const cohortPage = await browser.newPage();
 await cohortPage.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
@@ -838,7 +862,7 @@ const ordered = await phone.evaluate(() => {
 });
 if (!ordered) fail("phone section order differs from the desktop study");
 else pass("phone preserves the study reading order");
-await phone.evaluate(() => document.querySelector(".explorer")?.scrollIntoView());
+await phone.evaluate(() => document.querySelector(".explorer")?.scrollIntoView({ behavior: "instant" }));
 const phoneChart = await phone.evaluate(() => {
   const chart = document.querySelector("svg.chart");
   const rect = chart?.getBoundingClientRect();
@@ -857,6 +881,9 @@ await waitFor(phone, (rid) => {
   const row = document.querySelector(`[data-rid="${rid}"]`);
   return row && row.querySelector(".reading.open") !== null;
 }, leader.run_id);
+// The reading updates during the tap. The footer also waits for the
+// IntersectionObserver delivery that marks the explorer as on screen.
+await waitFor(phone, () => document.querySelector('.footstrip[aria-hidden="false"]'));
 const phoneState = await phone.evaluate(() => {
   const strip = document.querySelector(".footstrip");
   const reading = document.querySelector(".reading.open");

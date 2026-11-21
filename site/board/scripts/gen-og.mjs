@@ -42,6 +42,7 @@ const vendorData = JSON.parse(
 );
 const CARD_INK = vendorData.design.ink;
 const SUBJECT_FILL = vendorData.design.subjectFill;
+const palette = vendorData.design;
 
 /* Decimal formatting, same rule as lib/format.ts. */
 function expandDec(v) {
@@ -648,7 +649,7 @@ function plotSvg(kind, placedLabels, subjectSeat, widthOverride) {
   const grid = ticks
     .map(
       (t) =>
-        `<line x1="${g.x0}" y1="${g.yOf(t)}" x2="${g.canvas.w}" y2="${g.yOf(t)}" stroke="#1a232e" stroke-width="1"/>\n<text x="${g.tickX}" y="${g.yOf(t) + 4}" text-anchor="end" class="gtick">${Math.round(t * 100)}</text>`,
+        `<line x1="${g.x0}" y1="${g.yOf(t)}" x2="${g.canvas.w}" y2="${g.yOf(t)}" stroke="${palette.rule}" stroke-width="1"/>\n<text x="${g.tickX}" y="${g.yOf(t) + 4}" text-anchor="end" class="gtick">${Math.round(t * 100)}</text>`,
     )
     .join("\n");
   const decades = decadesFor(g)
@@ -662,9 +663,9 @@ function plotSvg(kind, placedLabels, subjectSeat, widthOverride) {
     const y = g.yOf(r.asr_conditional);
     if (r.run_id === subject.run_id) return "";
     if (!r.ranking_eligible) {
-      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${g.flagR}" fill="#0d1219" stroke="#e8a33d" stroke-width="2"/>`;
+      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${g.flagR}" fill="${palette.panel}" stroke="${palette.flagged}" stroke-width="2"/>`;
     }
-    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${g.discR}" fill="#aeb7c2" fill-opacity="0.45"/>`;
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${g.discR}" fill="${palette.field}" fill-opacity="0.72"/>`;
   };
   const discs = plottedDrawn.map(disc).join("\n");
   const sx = g.xOf(subject.total_cost_usd);
@@ -817,14 +818,15 @@ const labelCandidates = plottedDrawn
  * stacks the design's mocks carry. */
 const CARD_CSS_BASE = `
   :root{
-    --ground:#070a0f; --panel:#0d1219; --ink:${CARD_INK}; --body:#c3cad3;
-    --gray:#8d97a3; --faint:#5d6773; --hair:#212b36; --hair2:#2c3844;
-    --accent:#2fbf71; --amber:#e8a33d; --disc:#aeb7c2;
+    --ground:${palette.ground}; --panel:${palette.panel}; --ink:${CARD_INK}; --body:${palette.quiet};
+    --gray:${palette.quiet}; --faint:#9caccd; --hair:${palette.rule}; --hair2:${palette.rule};
+    --accent:${SUBJECT_FILL}; --amber:${palette.flagged}; --disc:${palette.field};
     --sans:"Liberation Sans","DejaVu Sans",Arial,sans-serif;
     --mono:"Liberation Mono","DejaVu Sans Mono",monospace;
   }
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:var(--ground);color:var(--body);font-family:var(--sans);
+    box-shadow:inset 0 4px var(--accent);
     font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
   .micro{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.055em;color:var(--gray);text-transform:uppercase}
   .micro.faint{color:var(--faint)}
@@ -835,7 +837,7 @@ const CARD_CSS_BASE = `
   .ro .tick.g{background:var(--accent)} .ro .tick.a{background:var(--amber)}
   .ro .num{font-family:var(--sans);font-weight:700;color:var(--ink);line-height:1.15}
   .robar{display:flex;height:9px;border-radius:999px;overflow:hidden;background:var(--panel);margin-top:7px}
-  .robar .seg.genuine{background:#31404f}
+  .robar .seg.genuine{background:var(--disc)}
   .robar .seg.malformed{background:var(--amber)}
   .ladder{margin-top:auto;border-top:1px solid var(--hair);padding-top:8px}
   .ladder .lhead{padding-bottom:6px;border-bottom:1px solid var(--hair)}
@@ -849,13 +851,13 @@ const CARD_CSS_BASE = `
   .lrow.sel .lr{color:${CARD_INK}}
   .lrow.flag .ld{background:var(--panel);border:2px solid var(--amber)}
   .nameline{color:var(--gray);line-height:1.55}
-  .nameline b{color:#e9edf2;font-weight:600}
+  .nameline b{color:var(--ink);font-weight:600}
   footer{display:flex;justify-content:space-between;color:var(--faint)}
-  .gtick{font-family:var(--mono);font-size:10px;fill:#5d6773}
-  .gtick.decade{font-size:10.5px;fill:#8d97a3}
+  .gtick{font-family:var(--mono);font-size:10px;fill:var(--faint)}
+  .gtick.decade{font-size:10.5px;fill:var(--gray)}
   .subj-name{font-family:var(--sans);font-size:15px;font-weight:700;fill:${CARD_INK}}
-  .subj-sub{font-family:var(--sans);font-size:12.5px;fill:#c3cad3}
-  .plab{font-family:var(--sans);font-size:11px;fill:#8d97a3}
+  .subj-sub{font-family:var(--sans);font-size:12.5px;fill:var(--body)}
+  .plab{font-family:var(--sans);font-size:11px;fill:var(--gray)}
 `;
 const CARD_CSS_LAND = `
   .card{width:1200px;height:630px;padding:18px 44px 14px;display:flex;flex-direction:column;overflow:hidden}

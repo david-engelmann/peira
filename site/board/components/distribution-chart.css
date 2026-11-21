@@ -1,0 +1,250 @@
+.field-plate {
+  --plate-ink: #f3f5ff;
+  --plate-muted: #aebcdb;
+  --plate-rule: #3b4b72;
+  --plate-highlight: #81ecf6;
+  --plate-bar: #a3afff;
+  color: var(--plate-ink);
+  background: linear-gradient(155deg, #182647 0%, #111c38 52%, #10182e 100%);
+  border: 1px solid #334468;
+  border-radius: 14px;
+  box-shadow: 0 18px 42px #10182e28, inset 0 1px #e0e9ff14;
+  min-width: 0;
+  margin: 0;
+  padding: clamp(17px, 2.05vw, 30px);
+}
+
+.plate-dateline, .plate-key {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  column-gap: 12px;
+  color: var(--plate-muted);
+  font: 500 11px/1.45 "JetBrains Mono", monospace;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.plate-dateline {
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--plate-rule);
+}
+
+.plate-dateline > span, .plate-key > span:first-child { color: var(--plate-highlight); }
+
+.field-plate h2 {
+  font: 650 clamp(24px, 2.35vw, 34px)/1.08 "Archivo", system-ui, sans-serif;
+  letter-spacing: -.048em;
+  margin: 16px 0 5px;
+}
+
+.field-plate p, .field-plate figcaption {
+  color: var(--plate-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+.distribution-chart {
+  --plot-gutter: 38px;
+  margin: 24px 0 16px;
+}
+
+.distribution-plot {
+  position: relative;
+  height: clamp(128px, 12.4vw, 175px);
+  margin-inline-start: var(--plot-gutter);
+}
+
+.distribution-instructions {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.distribution-scale { position: absolute; inset: 0; border-inline-start: 1px solid #778ab8; pointer-events: none; }
+
+.distribution-tick {
+  position: absolute;
+  inset-inline: 0;
+  border-top: 1px solid #52648f73;
+}
+
+.distribution-tick:first-child { border-color: #778ab8; }
+
+.distribution-tick span {
+  position: absolute;
+  right: calc(100% + 6px);
+  transform: translateY(-50%);
+  color: var(--plate-muted);
+  font: 12px/1 "JetBrains Mono", monospace;
+}
+
+.distribution-bars {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--bar-count), minmax(0, 1fr));
+}
+
+.distribution-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.distribution-bar > span {
+  width: 78%;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(var(--plate-bar), #6276da);
+  pointer-events: none;
+}
+
+.distribution-bar[data-featured="true"] > span {
+  background: linear-gradient(var(--plate-highlight), #33a9cf);
+}
+
+.distribution-bar[aria-pressed="true"] {
+  background-color: #d8e2ff1c;
+  box-shadow: inset 0 1px #dae6ffa8;
+}
+
+.distribution-bar[aria-pressed="true"] > span { filter: brightness(1.15); }
+
+.distribution-bar:focus-visible {
+  z-index: 1;
+  outline: 2px solid var(--plate-highlight);
+  outline-offset: 0;
+}
+
+.distribution-direction {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 7px 0 9px var(--plot-gutter);
+  color: var(--plate-muted);
+  font: 12px/1.4 "JetBrains Mono", monospace;
+}
+
+.distribution-readout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 64px;
+  padding: 7px;
+  padding-inline-start: 11px;
+  background: #0c152ea8;
+  border: 1px solid var(--plate-rule);
+  border-radius: 7px;
+}
+
+.distribution-selection { min-width: 0; }
+
+.distribution-result { display: flex; flex-wrap: wrap; gap: 2px 9px; }
+
+.distribution-name {
+  font-weight: 600;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.distribution-measure {
+  color: var(--plate-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.distribution-measure > b { color: var(--plate-highlight); }
+
+.distribution-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  color: var(--plate-highlight);
+  font-size: 13px;
+  font-weight: 600;
+  text-underline-offset: 3px;
+}
+
+.distribution-actions { display: flex; flex: none; gap: 3px; }
+
+.distribution-actions button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--plate-rule);
+  border-radius: 4px;
+  background-color: #182644;
+  color: var(--plate-ink);
+  font: 600 21px/1 "Archivo", system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.distribution-actions button:hover { background-color: #283b67; }
+
+.field-plate ol { margin: 6px 0 7px; padding: 0; list-style: none; }
+
+.field-plate li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: clamp(7px, 1vw, 14px);
+  padding: 7px 0;
+  border-top: 1px solid var(--plate-rule);
+}
+
+.field-plate li a { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+
+.field-plate :is(a, .distribution-actions button):focus-visible { outline-color: var(--plate-highlight); }
+
+.field-plate li strong {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 3px;
+  max-width: 15ch;
+  color: var(--plate-highlight);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.field-plate li span { color: var(--plate-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.field-plate li > span { white-space: nowrap; }
+.field-plate figcaption { font-size: 13px; }
+
+@media (max-width: 460px) {
+  .distribution-result { display: block; }
+  .distribution-name { display: block; }
+  .field-plate li strong { max-width: 12ch; }
+}
+
+@media (pointer: coarse) {
+  .distribution-actions button { width: 44px; height: 44px; }
+  .distribution-link { min-height: 44px; }
+  .distribution-readout { min-height: 102px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .distribution-bar, .distribution-actions button { transition: background-color 130ms ease; }
+  .distribution-bar > span { transition: filter 130ms ease; }
+}
+
+@media (forced-colors: active) {
+  .distribution-bar > span { background: CanvasText; forced-color-adjust: none; }
+  .distribution-bar[data-featured="true"] > span { background: LinkText; }
+  .distribution-bar[aria-pressed="true"] { outline: 1px solid Highlight; outline-offset: -1px; }
+  .distribution-bar:focus-visible { outline: 2px solid Highlight; }
+}

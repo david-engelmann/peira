@@ -237,6 +237,7 @@ const vendorData = JSON.parse(
 /* The wordmark ink is a design token in the same table, so
  * this source carries no color the table names either. */
 const CARD_INK = vendorData.design.ink;
+const palette = vendorData.design;
 const VENDOR_BY_KEY = new Map(vendorData.families.map((f) => [f.key, f]));
 const VENDOR_RULES = vendorData.rules.map((r) => ({
   test: new RegExp(r.pattern),
@@ -356,7 +357,7 @@ if (
 const gridTicks = [axisMax, axisMax / 2, 0];
 const gridB = gridTicks
   .map(
-    (t) => `<line x1="${BX.x0}" y1="${byOf(t)}" x2="${BX.x1}" y2="${byOf(t)}" stroke="#27333f" stroke-opacity="0.55"/>
+    (t) => `<line x1="${BX.x0}" y1="${byOf(t)}" x2="${BX.x1}" y2="${byOf(t)}" stroke="${palette.rule}" stroke-opacity="0.55"/>
     <text x="${BX.x0 - 14}" y="${byOf(t) + 5}" class="tick" text-anchor="end">${Math.round(t * 100)}</text>`,
   )
   .join("\n");
@@ -437,9 +438,9 @@ const costLine = (r) =>
 const pointWords = (r) =>
   `${pointName(r)} (${fmtPct(r.asr_conditional)}, ${costIsLowerBound(r) ? "at least " : ""}${costFigure(r)} per run)`;
 const bSvg = `<svg width="1280" height="640" viewBox="0 0 1280 640" class="chart">
-  <rect x="48" y="196" width="1184" height="376" fill="#0d1219" stroke="#27333f"/>
+  <rect x="48" y="196" width="1184" height="376" fill="${palette.panel}" stroke="${palette.rule}"/>
   ${gridB}
-  <line x1="${BX.x0}" y1="${BX.yBot}" x2="${BX.x1}" y2="${BX.yBot}" stroke="#27333f"/>
+  <line x1="${BX.x0}" y1="${BX.yBot}" x2="${BX.x1}" y2="${BX.yBot}" stroke="${palette.rule}"/>
   ${decadesB}
   <text x="${BX.x0 + 6}" y="226" class="tick">Attack success, percent</text>
   <text x="${BX.x0}" y="560" class="tick">Recorded cost per run, US dollars, log scale</text>
@@ -479,25 +480,26 @@ const html = `<!doctype html>
 <html><head><meta charset="utf-8"><style>
 @font-face { font-family: "Archivo"; src: url("data:font/woff2;base64,${fontB64}") format("woff2"); }
 * { margin: 0; box-sizing: border-box; }
-body { width: 1280px; height: 640px; background: #070a0f; color: #eef2f6;
+body { width: 1280px; height: 640px; background: ${palette.ground}; color: ${CARD_INK};
+  box-shadow: inset 0 5px ${palette.subjectFill};
   font-family: "Archivo", system-ui, sans-serif; overflow: hidden; }
 .word { font-size: 26px; font-weight: 700; letter-spacing: 0.34em; color: ${CARD_INK}; }
 .mast { display: flex; align-items: baseline; justify-content: space-between; }
-.mastr { font-family: "Liberation Mono", "DejaVu Sans Mono", monospace; font-size: 13px; font-weight: 600; letter-spacing: 0.055em; color: #5d6773; text-transform: uppercase; }
-.foot { position: absolute; left: 48px; right: 48px; bottom: 22px; font-size: 17px; color: #71808f; display: flex; justify-content: space-between; }
+.mastr { font-family: "Liberation Mono", "DejaVu Sans Mono", monospace; font-size: 13px; font-weight: 600; letter-spacing: 0.055em; color: ${palette.quiet}; text-transform: uppercase; }
+.foot { position: absolute; left: 48px; right: 48px; bottom: 22px; font-size: 17px; color: ${palette.quiet}; display: flex; justify-content: space-between; }
 .mono { font-weight: 700; text-anchor: middle; dominant-baseline: central; }
 .head { position: absolute; left: 48px; top: 36px; right: 48px; }
 h1 { font-size: 52px; font-weight: 700; letter-spacing: -0.02em; margin-top: 10px; }
-.sub { font-size: 20px; color: #aebcc7; margin-top: 8px; }
+.sub { font-size: 20px; color: ${palette.quiet}; margin-top: 8px; }
 .chart { position: absolute; left: 0; top: 0; }
-.tick { fill: #71808f; font-size: 15px; }
-.micro2 { fill: #71808f; font-size: 16px; font-weight: 600; letter-spacing: 0.14em; }
-.pname { fill: #eef2f6; font-size: 34px; font-weight: 700; }
-.pfig { fill: #aebcc7; font-size: 24px; font-weight: 550; }
+.tick { fill: ${palette.quiet}; font-size: 15px; }
+.micro2 { fill: ${palette.subjectFill}; font-size: 16px; font-weight: 600; letter-spacing: 0.14em; }
+.pname { fill: ${CARD_INK}; font-size: 34px; font-weight: 700; }
+.pfig { fill: ${palette.quiet}; font-size: 24px; font-weight: 550; }
 .sm .micro2 { font-size: 13px; }
 .sm .pname { font-size: 26px; }
 .sm .pfig { font-size: 19px; }
-.fallback { position: absolute; left: 150px; top: 578px; width: 1082px; font-size: 16px; line-height: 20px; color: #aebcc7; }
+.fallback { position: absolute; left: 150px; top: 578px; width: 1082px; font-size: 16px; line-height: 20px; color: ${palette.quiet}; }
 </style></head><body>
 ${bSvg}
 <div class="fallback" id="social-fallback" hidden></div>

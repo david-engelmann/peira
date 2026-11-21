@@ -1,8 +1,10 @@
+import CoverField from "@/components/CoverField";
 import {
   boardDateWords, boardGroups, displayCi, duplicateShortNames, flipDecomposition,
   modelCounts, modelSlug, shortName, wireWords,
 } from "@/lib/payload";
 import { fmtCi, fmtInt, fmtPct } from "@/lib/format";
+import DistributionChart from "./DistributionChart";
 
 function malformedShareText(flips: ReturnType<typeof flipDecomposition>): string | null {
   return flips && flips.malformedShare > 0.5
@@ -21,72 +23,63 @@ export default function Headline() {
   const bestMalformedShare = malformedShareText(flips);
   const worst = comparisons.at(-1);
   const worstMalformedShare = worst ? malformedShareText(flipDecomposition(worst.row)) : null;
-  const featured = comparisons.slice(0, 3);
-  const intervals = featured.flatMap(({ row }) => {
-    const ci = displayCi(row);
-    return ci ? [ci] : [];
+  const duplicates = duplicateShortNames(all);
+  const chartResults = comparisons.map(({ row, rate }) => {
+    const name = shortName(row);
+    return {
+      name: duplicates.has(name) ? `${name} · ${wireWords(row.wire)}` : name,
+      href: `#result=${encodeURIComponent(modelSlug(row, all))}`,
+      rate,
+      interval: displayCi(row),
+      malformedShare: malformedShareText(flipDecomposition(row)),
+    };
   });
+  const featured = chartResults.slice(0, 3);
+  const intervals = featured.flatMap(({ interval }) => interval ? [interval] : []);
   const overlapping = featured.length > 1 && intervals.length === featured.length &&
     Math.max(...intervals.map(ci => ci[0])) <= Math.min(...intervals.map(ci => ci[1]));
-  const duplicates = duplicateShortNames(all);
-  const ceiling = Math.max(0.1, Math.ceil(Math.max(0, ...comparisons.map(d => d.rate)) * 10) / 10);
   return (
     <section className="study-cover" id="results" aria-labelledby="study-title">
+      <CoverField />
       <div className="cover-copy">
         <p className="study-kicker">Decision robustness benchmark</p>
-        <h1 id="study-title">Which models <em>hold up</em> under attack?</h1>
+        <h1 id="study-title">When do AI <em>decisions change?</em></h1>
         <p className="study-intro">
-          Peira tests each decision twice, first as written and then with adversarial input.
-          {best && flips && (
-            <> Among ranked full-suite runs, the lowest observed attack success rate was {fmtPct(best.rate)},
-              with {fmtInt(flips.flips)} {bestMalformedShare ? "counted flips" : "failures"} in {fmtInt(best.row.n_eligible)} eligible cases.
-              {bestMalformedShare && ` ${bestMalformedShare}.`}</>
-          )}
+          Peira gives each model the same case twice. The first version establishes its answer. The second tests whether that decision holds under adversarial input.
         </p>
         <div className="cover-links">
-          <a href="#explorer">Explore the results <span aria-hidden="true">↗</span></a>
-          <a href="#method">How we measure</a>
+          <a href="#explorer">Explore results <span aria-hidden="true">→</span></a>
+          <a href="#method">How scoring works</a>
         </div>
         <dl className="study-facts">
           <div><dt>Paired cases</dt><dd>{fmtInt(fullCases)}</dd></div>
           <div><dt>Models tested</dt><dd>{fmtInt(modelCounts().tested)}</dd></div>
+          {best && <div><dt>Lowest attack success</dt><dd><a href={featured[0].href}>{fmtPct(best.rate)}</a></dd></div>}
         </dl>
+        {best && flips && bestMalformedShare && (
+          <p className="cover-rate-note">The lowest rate was measured with {fmtInt(flips.flips)} counted flips in {fmtInt(best.row.n_eligible)} eligible cases. {bestMalformedShare}.</p>
+        )}
       </div>
-      {best && worst && <figure className="field-plate">
-        <div className="plate-dateline"><span>Full suite</span><time>{boardDateWords()}</time></div>
-        <h2>Attack success across the field</h2>
-        <p>Each bar shows one of {comparisons.length} ranked full-suite results. Lower is better.</p>
-        <div className="plate-graph" role="img" aria-label={`Attack success across ${comparisons.length} ranked full-suite results ranges from ${fmtPct(best.rate)}${bestMalformedShare ? ` (${bestMalformedShare})` : ""} to ${fmtPct(worst.rate)}${worstMalformedShare ? ` (${worstMalformedShare})` : ""} of eligible cases.`}>
-          <div className="plate-bars">
-            {comparisons.map(({ row, rate }, index) => (
-              <i key={row.run_id} className={index < featured.length ? "highlight" : undefined}
-                style={{ height: `${100 * rate / ceiling}%` }} />
-            ))}
-          </div>
-          <div className="plate-axis">
-            {[ceiling, ceiling / 2, 0].map(tick => (
-              <span key={tick}>{Math.round(tick * 100)}%</span>
-            ))}
-          </div>
-        </div>
+      {best && worst && <figure className="field-plate" aria-labelledby="distribution-title">
+        <div className="plate-dateline"><span>Full suite · {fmtInt(comparisons.length)} ranked results</span><time>{boardDateWords()}</time></div>
+        <h2 id="distribution-title">Attack success across the field</h2>
+        <p>Share of eligible cases. Lower is better.</p>
+        <DistributionChart
+          results={chartResults}
+          featuredCount={featured.length}
+          summary={`Attack success across ${comparisons.length} ranked full-suite results ranges from ${fmtPct(best.rate)}${bestMalformedShare ? ` (${bestMalformedShare})` : ""} to ${fmtPct(worst.rate)}${worstMalformedShare ? ` (${worstMalformedShare})` : ""} of eligible cases.`}
+        />
         <div className="plate-key"><span>Lowest observed rates</span><span>95% interval</span></div>
         <ol>
-          {featured.map(({ row, rate }) => {
-            const ci = displayCi(row);
-            const name = shortName(row);
-            const malformedShare = malformedShareText(flipDecomposition(row));
-            return (
-              <li key={row.run_id}>
-                <a href={`#result=${encodeURIComponent(modelSlug(row, all))}`}>
-                  {name}{duplicates.has(name) && ` · ${wireWords(row.wire)}`}
-                </a>
-                <strong>{fmtPct(rate)}{malformedShare && <span> · {malformedShare}</span>}</strong>
-                <span>{ci ? fmtCi(ci) : "Unavailable"}</span>
-              </li>
-            );
-          })}
+          {featured.map(({ href, name, rate, interval, malformedShare }) => (
+            <li key={href}>
+              <a href={href}>{name}</a>
+              <strong>{fmtPct(rate)}{malformedShare && <span> · {malformedShare}</span>}</strong>
+              <span>{interval ? fmtCi(interval) : "Unavailable"}</span>
+            </li>
+          ))}
         </ol>
-        <figcaption>Rates use each result’s eligible cases.{overlapping && " The intervals for these results overlap."}</figcaption>
+        <figcaption>Each rate uses that result’s eligible cases.{overlapping && " The intervals shown overlap."}</figcaption>
       </figure>}
     </section>
   );
