@@ -263,7 +263,8 @@ jobs:
               # rust-toolchain.toml when both are present. Quotes are
               # stripped first, so a quoted destination is seen
               # plainly.
-              root_dirs = (".", "./", workdir, workdir + "/", workdir + "/.", "$PWD", "${PWD}")
+              root_dirs = (".", "./", workdir, workdir + "/", workdir + "/.",
+                           "$PWD", "${PWD}", "$PWD/", "${PWD}/", "$PWD/.", "${PWD}/.")
               for line in flat.splitlines():
                   stripped = line.strip()
                   if not stripped or stripped.startswith("#"):
@@ -290,11 +291,12 @@ jobs:
                           # any path qualification, so the verb seen is
                           # the command that actually runs.
                           seen_wrapper = False
+                          wrappers = ("env", "command", "busybox", "sudo", "timeout", "nohup", "nice", "stdbuf", "setsid")
                           while toks and ("=" in toks[0] or re.fullmatch(r"\d+[a-z]?", toks[0])
-                                          or base(toks[0]) in ("env", "command", "busybox", "sudo", "timeout", "nohup", "nice")
+                                          or base(toks[0]) in wrappers
                                           or (seen_wrapper and (toks[0].startswith("-")
                                                                 or (toks[0].isalpha() and toks[0].isupper())))):
-                              if base(toks[0]) in ("env", "command", "busybox", "sudo", "timeout", "nohup", "nice"):
+                              if base(toks[0]) in wrappers:
                                   seen_wrapper = True
                               toks = toks[1:]
                           if not toks:
