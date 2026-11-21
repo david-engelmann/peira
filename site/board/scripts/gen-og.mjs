@@ -28,6 +28,7 @@ import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const signature = readFileSync(path.join(root, "../../.github/board/peira-dark.svg"), "utf8").trim();
 const payload = JSON.parse(
   readFileSync(path.join(root, "data", "payload.json"), "utf8"),
 );
@@ -830,8 +831,10 @@ const CARD_CSS_BASE = `
     font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
   .micro{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.055em;color:var(--gray);text-transform:uppercase}
   .micro.faint{color:var(--faint)}
-  .mast{display:flex;align-items:baseline;justify-content:space-between;padding-bottom:9px;border-bottom:1px solid var(--hair)}
-  .wordmark{font-size:15px;font-weight:700;letter-spacing:.34em;color:var(--ink)}
+  .mast{display:flex;align-items:center;justify-content:space-between;padding-bottom:9px;border-bottom:1px solid var(--hair)}
+  .wordmark{color:var(--ink)}
+  .wordmark > svg{display:block;width:auto;height:17px}
+  .wordmark svg[fill]{fill:currentColor}
   h1{font-weight:700;letter-spacing:-.01em;color:var(--ink)}
   .ro .tick{display:inline-block;width:8px;height:8px;margin-right:8px}
   .ro .tick.g{background:var(--accent)} .ro .tick.a{background:var(--amber)}
@@ -888,7 +891,7 @@ const CARD_CSS_LAND = `
 const CARD_CSS_PORT = `
   .card{width:1080px;height:1350px;padding:34px 52px 34px;display:flex;flex-direction:column;overflow:hidden}
   .mast{padding-bottom:12px}
-  .wordmark{font-size:19px}
+  .wordmark > svg{height:22px}
   .micro{font-size:12px}
   h1{font-size:52px;line-height:1.1;margin-top:16px}
   .nums{display:grid;grid-template-columns:1fr 1fr 1fr;gap:30px;margin-top:20px}
@@ -950,7 +953,7 @@ function cardHtml(kind) {
   const ros = readouts();
   const roHtml = (b) =>
     `<div class="ro"><div class="micro${b.faint ? " faint" : ""}">${b.micro}</div><div class="num">${esc(b.num)}</div>${b.bar ?? ""}<div class="who">${esc(b.who)}</div></div>`;
-  const mast = `<div class="mast"><div class="wordmark">PEIRA</div><div class="micro faint">${MAST_R}</div></div>`;
+  const mast = `<div class="mast"><div class="wordmark">${signature}</div><div class="micro faint">${MAST_R}</div></div>`;
   const foot = `<footer><span>${esc(FOOT_L())}</span><span>${FOOT_R}</span></footer>`;
   const nameline = `<p class="nameline" id="nameline"></p>`;
   if (kind === "port") {

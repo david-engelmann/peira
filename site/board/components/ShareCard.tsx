@@ -8,7 +8,7 @@ export const cardColors = { ...vendorData.design, accent: vendorData.design.subj
 
 const symbol = `data:image/svg+xml;base64,${readFileSync(path.join(process.cwd(), "app/icon.svg")).toString("base64")}`;
 
-export function ShareCard({ label, children }: { label: string; children: ReactNode }) {
+export function ShareCard({ label, children }: { label?: string; children: ReactNode }) {
   return (
     <div style={{
       display: "flex", flexDirection: "column", width: "100%", height: "100%",
@@ -17,10 +17,10 @@ export function ShareCard({ label, children }: { label: string; children: ReactN
     }}>
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "center",
-        borderBottom: `1px solid ${cardColors.rule}`, paddingBottom: 17,
+        ...(label && { borderBottom: `1px solid ${cardColors.rule}`, paddingBottom: 17 }),
       }}>
         <PeiraBrand symbol={symbol} ink={cardColors.ink} scale={1.2} />
-        <span style={{ fontSize: 19, color: cardColors.quiet }}>{label}</span>
+        {label && <span style={{ fontSize: 19, color: cardColors.quiet }}>{label}</span>}
       </div>
       {children}
     </div>

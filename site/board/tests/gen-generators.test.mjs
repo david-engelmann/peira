@@ -59,6 +59,11 @@ function scratchBoard(mutate, payloadPath) {
   mkdirSync(path.join(board, "data"), { recursive: true });
   mkdirSync(path.join(board, "lib"), { recursive: true });
   mkdirSync(path.join(board, "public", "fonts"), { recursive: true });
+  mkdirSync(path.join(scratch, ".github", "board"), { recursive: true });
+  cpSync(
+    path.join(boardRoot, "../../.github/board/peira-dark.svg"),
+    path.join(scratch, ".github", "board", "peira-dark.svg"),
+  );
   cpSync(
     path.join(boardRoot, "scripts", "gen-og.mjs"),
     path.join(board, "scripts", "gen-og.mjs"),

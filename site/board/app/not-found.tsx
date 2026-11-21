@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import PeiraBrand from "@/components/PeiraBrand";
 
 /**
  * The doorway for an address the board does not hold. The
@@ -17,13 +18,13 @@ export const metadata: Metadata = {
 export default function NotFound() {
   return (
     <main className="notfound">
+      <a className="route-brand" href="/" aria-label="Peira home"><PeiraBrand /></a>
       <p className="eyebrow">
         <span className="eno">404</span> · Not found
       </p>
       <h1 className="notfound-title">Nothing at this address</h1>
       <p className="notfound-lede">
-        The board stands at one address, and every result&rsquo;s
-        reading lives on it. This address is not one of them.
+        Explore the benchmark or search for a model in the results explorer.
       </p>
       <p className="notfound-action">
         <a href="/">Back to the board</a>

@@ -86,6 +86,7 @@ const MIME = {
   ".json": "application/json",
   ".svg": "image/svg+xml",
   ".png": "image/png",
+  ".ico": "image/x-icon",
   ".woff2": "font/woff2",
   ".txt": "text/plain",
 };
@@ -305,6 +306,21 @@ pass("all five group comparisons link to the full-suite results used in each med
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 950 });
 await page.goto(`${base}/`, { waitUntil: "networkidle0" });
+const previewIcons = await page.evaluate(async () => {
+  const links = [...document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]')];
+  return Promise.all(links.map(async link => {
+    const image = new Image();
+    image.src = link.href;
+    await image.decode();
+    return [link.rel, new URL(link.href).pathname, image.naturalWidth, image.naturalHeight];
+  }));
+});
+const hasIcon = (rel, path, size) => previewIcons.some(([r, p, w, h]) =>
+  r === rel && p === path && w === h && (size ? w === size : w > 0));
+if (!hasIcon("icon", "/favicon.ico") || !hasIcon("icon", "/icon1.png", 96) ||
+    !hasIcon("icon", "/icon.svg", 48) || !hasIcon("apple-touch-icon", "/apple-touch-icon.png", 180)) {
+  fail(`the exported page is missing a usable preview icon: ${JSON.stringify(previewIcons)}`);
+} else pass("all four browser and link-preview icons are discoverable and decode");
 await page.evaluate(() => document.querySelector(".explorer")?.scrollIntoView({ behavior: "instant" }));
 
 const rankedDefault = await page.evaluate(() => ({

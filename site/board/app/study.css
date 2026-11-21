@@ -130,8 +130,7 @@ body { background: var(--ground); }
 .study .scene.band::before { display: none; }
 .footer-bar, .footer-edition, .study-footer nav { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 22px; }
 .footer-bar { justify-content: space-between; }
-.footer-edition b { font-size: 17px; letter-spacing: -.035em; }
-.study-footer b { color: var(--ink); }
+.study-footer .footer-edition a { color: var(--ink); }
 .study-footer a { display: inline-flex; gap: 4px; align-items: center; min-height: 32px; color: var(--accent); font-weight: 600; }
 .study-footer a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .study-footer details { margin-top: 12px; }
