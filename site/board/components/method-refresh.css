@@ -1,9 +1,9 @@
 .method {
   --method-ink: var(--ink);
   --method-muted: var(--ink-2);
-  --method-line: #d6e1dd;
+  --method-line: var(--line-soft);
   --method-accent: var(--accent);
-  --method-wash: #eef6f3;
+  --method-wash: light-dark(#eef6f3, #23372f);
   display: grid;
   grid-template-columns: minmax(205px, 0.9fr) minmax(0, 1.75fr);
   align-items: start;
@@ -49,7 +49,7 @@
 }
 
 .method-disclosures {
-  background: #fff;
+  background: var(--panel);
   border: 1px solid var(--method-line);
   border-radius: 6px;
 }
@@ -177,8 +177,8 @@
 .case-selector select {
   width: 100%;
   min-height: 44px;
-  background: #fff;
-  border: 1px solid #849e95;
+  background: var(--panel);
+  border: 1px solid var(--control-line);
   border-radius: 6px;
   color: var(--method-ink);
   font: inherit;
@@ -251,7 +251,7 @@
 }
 
 .case-added {
-  background: #e1efea;
+  background: light-dark(#e1efea, #34564a);
   color: var(--method-ink);
 }
 

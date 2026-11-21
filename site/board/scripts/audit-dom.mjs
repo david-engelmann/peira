@@ -197,7 +197,7 @@ const cohortPage = await browser.newPage();
 await cohortPage.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
 await cohortPage.goto(base, { waitUntil: "networkidle0" });
 const fullRates = new Map(full.filter(r => r.asr_conditional != null).map(r => [r.run_id, r.asr_conditional]));
-for (const dimension of ["kind", "serving", "weights", "tier"]) {
+for (const dimension of ["kind", "interface", "serving", "weights", "tier"]) {
   await cohortPage.select("#model-groups select", dimension);
   const chartRows = await cohortPage.$$eval(".group-row", elements => elements.map(el => ({
     link: el.querySelector("a").getAttribute("href"),
@@ -218,7 +218,7 @@ for (const dimension of ["kind", "serving", "weights", "tier"]) {
   if (seen.size !== fullRates.size) fail(`Incomplete full-suite coverage for ${dimension}`);
 }
 await cohortPage.close();
-pass("all four group comparisons link to the full-suite results used in each median");
+pass("all five group comparisons link to the full-suite results used in each median");
 
 /* ---------- desktop interactions ---------- */
 
@@ -231,12 +231,18 @@ const rankedDefault = await page.evaluate(() => ({
   pop: document.querySelector("#explorer-pop")?.value,
   chart: Boolean(document.querySelector("svg.chart")),
   flagged: document.querySelectorAll(".disc.flagged, .sync-row .xstate").length,
+  offScale: document.querySelectorAll(".offscale-note p").length,
   count: document.querySelector(".xcount")?.textContent ?? "",
 }));
 if (rankedDefault.pop !== "full" || !rankedDefault.chart || rankedDefault.flagged ||
     !rankedDefault.count.includes(`${full.length} of ${full.length} results`)) {
   fail(`the Explorer does not open with the full-suite chart: ${JSON.stringify(rankedDefault)}`);
 } else pass("the Explorer opens with the full-suite chart");
+
+const pricedFull = full.filter(r => r.total_cost_usd > 0);
+if (pricedFull.length && rankedDefault.offScale !== 0) {
+  fail("the opening chart labels a result outside the priced full-suite axis");
+}
 
 const setMode = async (targetPage, label) => {
   await targetPage.evaluate((text) => {
@@ -629,7 +635,7 @@ const openFrontierRuns = full.filter((r) =>
 );
 const selectedFrontier = openFrontierRuns[0];
 const profileHash = new URLSearchParams({
-  pop: "full", mode: "rank", kind: "general", serving: "hosted", weights: "open",
+  pop: "full", mode: "rank", kind: "general", interface: "structured", serving: "hosted", weights: "open",
   tier: "frontier", frontier: "1", sel: modelSlug(selectedFrontier), pin: modelSlug(leader), open: "1",
 });
 await page.goto(`${base}/#explorer?${profileHash}`, { waitUntil: "networkidle0" });
@@ -643,7 +649,7 @@ const filteredRankings = await page.evaluate(() => ({
   controls: document.querySelector(".model-filters summary")?.textContent ?? "",
 }));
 const expectedRanks = openFrontierRuns.map((r) => [r.run_id, r.rank]);
-const expectedProfileLabels = ["General-purpose", "Hosted inference", "Documented open weights", "Frontier baselines"];
+const expectedProfileLabels = ["General-purpose", "Structured generation", "Hosted inference", "Documented open weights", "Frontier baselines"];
 if (JSON.stringify(filteredRankings.ranks) !== JSON.stringify(expectedRanks) ||
     !expectedProfileLabels.every((label) => filteredRankings.controls.includes(label))) {
   fail(`the combined model filters changed ranks or returned unexpected rows: ${JSON.stringify(filteredRankings)}`);
@@ -682,11 +688,29 @@ const cleared = await page.evaluate(() => ({
   results: document.querySelectorAll(".xrow").length,
   reading: Boolean(document.querySelector(".reading.open")),
   filterKeys: [...new URLSearchParams(location.hash.split("?")[1]).keys()]
-    .filter((key) => ["kind", "serving", "weights", "tier"].includes(key)),
+    .filter((key) => ["kind", "interface", "serving", "weights", "tier"].includes(key)),
 }));
 if (cleared.results !== full.length || cleared.reading || cleared.filterKeys.length !== 0) {
   fail("clearing the model filters did not restore the full suite without reopening a stale reading");
 } else pass("clearing model filters restores the full suite without a stale reading");
+
+const luna = (adapter) => full.find((row) => row.adapter_name === adapter && row.adapter_version === "gpt-6-luna");
+const lunaCompare = new URLSearchParams({
+  pop: "full", mode: "rank", kind: "general", open: "1",
+  sel: modelSlug(luna("openai-decisions")), pin: modelSlug(luna("openai-structured")),
+});
+await page.goto(`${base}/#explorer?${lunaCompare}`, { waitUntil: "networkidle0" });
+await waitFor(page, () => document.querySelectorAll(".compare-side .reading-profile").length === 2);
+const lunaProfiles = await page.$$eval(".compare-side .reading-profile", (profiles) =>
+  profiles.map((profile) => Object.fromEntries([...profile.querySelectorAll("div")].map((field) => [
+    field.querySelector("dt").textContent, field.querySelector("dd").textContent,
+  ]))),
+);
+if (lunaProfiles[0]["Decision interface"] !== "Typed decision questions" ||
+    lunaProfiles[1]["Decision interface"] !== "Structured generation" ||
+    lunaProfiles.some((profile) => profile["Model role"] !== "General-purpose models")) {
+  fail(`the Luna comparison misclassified a run: ${JSON.stringify(lunaProfiles)}`);
+} else pass("the Luna comparison shows the same model role and two different interfaces");
 await page.close();
 
 /* ---------- ranking transitions ---------- */

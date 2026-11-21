@@ -8,14 +8,17 @@
  *   CAPTURE_DIR                output directory (default ./captures)
  */
 import { createServer } from "node:http";
-import { readFileSync, existsSync, statSync, mkdirSync } from "node:fs";
+import { readFileSync, existsSync, statSync, mkdirSync, copyFileSync } from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const boardDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = path.join(boardDir, "out");
-const capDir = process.env.CAPTURE_DIR ?? path.join(boardDir, "captures");
+const readmeOnly = process.argv.includes("--readme");
+const capDir = process.env.CAPTURE_DIR ?? (readmeOnly
+  ? path.resolve(boardDir, "../../.github/board")
+  : path.join(boardDir, "captures"));
 if (!existsSync(path.join(outDir, "index.html"))) {
   console.error("capture failed: out/index.html missing, run npm run build first");
   process.exit(1);
@@ -62,6 +65,45 @@ try {
 console.log("chromium launched");
 
 const page = await browser.newPage();
+if (readmeOnly) {
+  try {
+    await page.setViewport({ width: 1200, height: 880, deviceScaleFactor: 1.5 });
+    for (const theme of ["light", "dark"]) {
+      await page.goto("about:blank");
+      await page.emulateMediaFeatures([
+        { name: "prefers-color-scheme", value: theme },
+        { name: "prefers-reduced-motion", value: "reduce" },
+      ]);
+      await page.goto(base, { waitUntil: "networkidle0" });
+      await page.evaluate(() => document.fonts.ready);
+      const bottom = await page.$eval("#results", el => el.getBoundingClientRect().bottom);
+      await page.screenshot({
+        path: path.join(capDir, `overview-${theme}.webp`), quality: 92,
+        clip: { x: 0, y: 0, width: 1200, height: Math.ceil(bottom) },
+      });
+      await page.evaluate(() => { location.hash = "explorer?pop=full&mode=chart&kind=general&serving=hosted"; });
+      await page.waitForFunction(() => document.querySelector("#explorer-kind")?.value === "general"
+        && document.querySelector("#explorer-serving")?.value === "hosted");
+      const chart = await page.waitForSelector(".chartlayout svg.chart");
+      await chart.evaluate(el => window.scrollBy({ top: el.closest(".chartlayout").getBoundingClientRect().top - 96, behavior: "instant" }));
+      const clip = await page.evaluate(() => {
+        const figure = document.querySelector(".chartlayout").getBoundingClientRect();
+        const margin = 16;
+        return { x: figure.left - margin, y: figure.top + scrollY - margin,
+          width: figure.width + 2 * margin, height: figure.height + margin * 2 };
+      });
+      await page.screenshot({ path: path.join(capDir, `explorer-${theme}.webp`), quality: 92, clip });
+    }
+    if (!process.env.CAPTURE_DIR) {
+      copyFileSync(path.join(outDir, "opengraph-image"), path.resolve(capDir, "../social-preview.png"));
+    }
+  } finally {
+    await browser.close();
+    server.close();
+  }
+  process.exit(0);
+}
+
 const shot = async (name, opts = {}) => {
   const file = path.join(capDir, name);
   await page.screenshot({ path: file, ...opts });

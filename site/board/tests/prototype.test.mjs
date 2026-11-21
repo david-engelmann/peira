@@ -834,7 +834,8 @@ test("the plot pads its right edge and the discs read at floor size", () => {
   assert.ok(explorer.includes("const padR = 30;"));
   assert.ok(explorer.includes("r={subject ? 17 : 15}"));
   assert.match(chartCss, /\.disc-face \{\s*fill: var\(--chart-field\);\s*stroke: var\(--chart-field\)/);
-  assert.match(chartCss, /\.disc-letter\.subject-letter \{\s*fill: white;\s*font-size: 11\.5px;/);
+  assert.match(chartCss, /--chart-glyph: light-dark\(#fffefa, #142b23\);/);
+  assert.match(chartCss, /\.disc-letter\.subject-letter \{\s*fill: var\(--chart-glyph\);\s*font-size: 11\.5px;/);
   assert.match(chartCss, /\.disc\.field\.greyed \{\s*opacity: 1;/);
   assert.match(chartCss, /\.chartsync \{[^}]*mask-image: none;/);
   assert.match(chartCss, /\.chartsync-heading \{\s*position: sticky;/);
@@ -1839,8 +1840,8 @@ test("the token hygiene the re-score named stands as audited", () => {
   // fails if either side of that standing is removed.
   const design = read("DESIGN.md");
   const study = read("app/study.css");
-  assert.ok(design.includes('ground: "#faf9f5"') && study.includes("--ground: #faf9f5;"));
-  assert.ok(design.includes('ink-1: "#172e2b"') && study.includes("--ink: #172e2b;"));
+  assert.ok(design.includes('ground: "#faf9f5"') && study.includes("--ground: light-dark(#faf9f5, #121d1b);"));
+  assert.ok(design.includes('ink-1: "#172e2b"') && study.includes("--ink: light-dark(#172e2b, #e8eee4);"));
   assert.ok(study.includes("--shadow-1: none;"));
   assert.ok(css.includes("--ease-out: cubic-bezier(0.23, 1, 0.32, 1);"));
   // The dead banner rule is gone from this sheet, and no

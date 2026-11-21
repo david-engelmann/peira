@@ -1,6 +1,56 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  applyThemePreference,
+  readThemePreference,
+  themeStorageKey,
+  type ThemePreference,
+} from "@/lib/theme";
+
+function ThemeSelect() {
+  const [preference, setPreference] = useState<ThemePreference>("system");
+
+  useEffect(() => {
+    setPreference(readThemePreference(document.documentElement.getAttribute("data-theme")));
+    const syncPreference = (event: StorageEvent) => {
+      if (event.key !== themeStorageKey && event.key !== null) return;
+      const next = readThemePreference(event.newValue);
+      applyThemePreference(next);
+      setPreference(next);
+    };
+    window.addEventListener("storage", syncPreference);
+    return () => window.removeEventListener("storage", syncPreference);
+  }, []);
+
+  return (
+    <label className="theme-select" title="Color theme">
+      <svg viewBox="0 0 20 20" width="17" height="17" fill="none" aria-hidden="true">
+        <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M10 2.5a7.5 7.5 0 0 1 0 15Z" fill="currentColor" />
+      </svg>
+      <select
+        aria-label="Color theme"
+        value={preference}
+        onChange={(event) => {
+          const next = readThemePreference(event.currentTarget.value);
+          applyThemePreference(next);
+          setPreference(next);
+          try {
+            if (next === "system") localStorage.removeItem(themeStorageKey);
+            else localStorage.setItem(themeStorageKey, next);
+          } catch {
+            // The current page can still change theme when storage is unavailable.
+          }
+        }}
+      >
+        <option value="system">System</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </label>
+  );
+}
 
 /**
  * The top bar, in the pattern of the Maidan landing bar
@@ -54,6 +104,7 @@ export default function TopBar() {
           <a href="/payload.json">Data</a>
         </div>
       </details>
+      <ThemeSelect />
     </header>
   );
 }

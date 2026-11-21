@@ -23,9 +23,9 @@ colors:
   chart-axis: "#c3ccc1"
   chart-tick: "#52665e"
   chart-glyph-dark: "#0b0e12"
-  chart-glyph-light: "#f4f7fa"
-  chart-field: "#39434e"
-  chart-subject: "#ffffff"
+  chart-glyph-light: "#fffefa"
+  chart-field: "#526f65"
+  chart-subject: "#006957"
   seg-genuine: "#668475"
   chart-series-anthropic: "#d97757"
   chart-series-openai: "#d7e0e8"
@@ -202,7 +202,9 @@ Open with the benchmark question beside the distribution of measured attack succ
 
 ## Typography and surfaces
 
-The page uses warm paper, dark ink and fine rules. Georgia introduces the research question. Archivo and tabular figures carry the data. The dark green overview figure uses a shared zero baseline. Its three highlighted bars correspond to the three named results directly below it. On phones the figure follows the question in reading order.
+Georgia introduces the research question. Archivo and tabular figures carry the data. The dark green overview figure uses a shared zero baseline. Its three highlighted bars correspond to the three named results directly below it. On phones the figure follows the question in reading order.
+
+The light palette above uses warm paper and dark green ink. The dark palette uses evergreen ground, pale ink and a mint accent. Both palettes use fine rules, and each gives chart markers, labels and focus outlines their own contrast against the surrounding surface. The paired color tokens in `app/study.css` and the section stylesheets define the rendered palettes. The board follows the system color preference until the reader selects Light or Dark in the masthead. That choice persists on the device.
 
 The analysis uses aligned labels and position on a common scale, following William Cleveland and Robert McGill’s graphical perception work. Case counts and denominators sit beside the corresponding family rates. Use a logarithmic scale for positive costs and label the currency. Keep missing prices and subset runs identifiable.
 

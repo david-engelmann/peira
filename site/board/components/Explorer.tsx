@@ -13,9 +13,11 @@ import {
   dimensionLabels,
   groupLabels,
   profileDimensions,
+  profileValue,
   type ProfileDimension,
 } from "@/lib/profileLabels";
 import Mark from "@/components/Mark";
+import ResultLink from "@/components/ResultLink";
 import {
   fmtDeltaPct,
   fmtDeltaUsd,
@@ -59,6 +61,7 @@ interface Brush {
 
 const ALL_PROFILES: ProfileFilters = {
   kind: "all",
+  interface: "all",
   serving: "all",
   weights: "all",
   tier: "all",
@@ -162,7 +165,7 @@ function ReadingBody({ row }: { row: XRow }) {
           .map((dimension) => (
             <div key={dimension}>
               <dt className="micro">{dimensionLabels[dimension]}</dt>
-              <dd>{groupLabels[dimension][profileValue(row, dimension)]}</dd>
+              <dd>{groupLabels[dimension][profileValue(row.profile, dimension)]}</dd>
             </div>
           ))}
       </dl>
@@ -226,6 +229,7 @@ function ReadingBody({ row }: { row: XRow }) {
       {row.sliceNote && <p className="reading-line">{row.sliceNote}</p>}
       {row.unanswered && <p className="reading-line">{row.unanswered}</p>}
       {row.singleCall && <p className="reading-line">{row.singleCall}</p>}
+      <ResultLink key={row.slug} href={row.href} />
       <p className="reading-prov">{row.provenanceLine}</p>
       {row.rerunText && <p className="reading-prov">{row.rerunText}</p>}
       {row.record.families.length > 0 && (
@@ -460,15 +464,9 @@ function matchesPopulation(row: XRow, pop: Pop) {
   return pop === "all" || row.kind === (pop === "guards" ? "slice" : pop);
 }
 
-function profileValue(row: XRow, dimension: ProfileDimension) {
-  return dimension === "tier"
-    ? (row.profile.frontier ? "frontier" : "other")
-    : row.profile[dimension];
-}
-
 function matchesProfile(row: XRow, filters: ProfileFilters) {
   return profileDimensions.every((dimension) =>
-    filters[dimension] === "all" || filters[dimension] === profileValue(row, dimension),
+    filters[dimension] === "all" || filters[dimension] === profileValue(row.profile, dimension),
   );
 }
 
@@ -1514,7 +1512,7 @@ function ChartView({
       })()
     : [];
 
-  const offScale = plotted.filter((r) => r.asr !== null && r.asr > axisMax);
+  const offScale = points.filter((r) => r.asr !== null && r.asr > axisMax);
   const chipRow = chipId
     ? points.find((r) => r.runId === chipId) ?? null
     : hoverId
@@ -1539,7 +1537,7 @@ function ChartView({
     if (selRow.kind === "slice") {
       return `${name} ran on the guard subset. See Rankings or Families for its results.`;
     }
-    if (selRow.asr !== null && selRow.asr > axisMax) {
+    if (selRow.costValue !== null && selRow.costValue > 0 && selRow.asr !== null && selRow.asr > axisMax) {
       return `${name} is above the plotted range at ${selRow.asrText} counted attack success.`;
     }
     if (selRow.costKind === "local") {

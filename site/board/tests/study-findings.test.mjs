@@ -56,7 +56,9 @@ test("the study renders exact pooled family counts and rates from the ranked ful
 
 test("the study plots all priced ranked full-suite results and discloses their intervals", () => {
   const html = renderStudy(readPayload());
-  assert.match(html, /−0\.16<\/p><p[^>]*>Spearman rank correlation across 32 priced results/);
+  assert.match(html, /−0\.41<\/p><p[^>]*>Spearman rank correlation between run cost and attack success across 19 fully priced results/);
+  assert.match(html, /Across all 32 recorded costs, the correlation was −0\.16/);
+  assert.match(html, /For 13 runs, the recorded cost is a lower bound/);
   assert.match(html, /9 had zero or unrecorded cost/);
   assert.equal([...html.matchAll(/class="study-scatter-point\b/g)].length, 32);
   assert.equal([...html.matchAll(/class="study-scatter-whisker\b/g)].length, 32);

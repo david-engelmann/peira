@@ -47,6 +47,10 @@ having produced a usable baseline, and a high ineligibility rate can
 hide a low conditional ASR. Read it next to the ineligibility
 breakdown, always.
 
+### Comparing serving costs
+
+The board’s cost plot includes all ranked full-suite results with a positive recorded serving cost. The headline Spearman correlation uses only results with a price for every timed call in every reported family. The second correlation uses all positive recorded totals at face value. Missing prices can change both the sample and the order of costs. These comparisons describe the measured runs. They do not estimate the effect of increasing a model’s budget.
+
 ### Comparing model groups
 
 Read each tick as one ranked full-suite run and the diamond as the median of those run-level conditional rates. The displayed count tells you how many runs contributed. A pair of evaluations of one model through different APIs contributes two observations. The group medians describe this set of tested configurations. Differences alone cannot tell you how changing hosting, weight access or model design would affect a particular model. Select a group name to inspect its individual results and intervals.

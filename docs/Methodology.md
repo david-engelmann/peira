@@ -76,6 +76,8 @@ medium 1) and target-hit rate.
 
 ### Model groups on the board
 
+For the cost comparison, each ranked full-suite run contributes one pair of values, its positive recorded serving cost and conditional attack success rate. Spearman correlations use average ranks for ties. Fully priced results require equal priced and timed call counts in every reported family. The wider comparison includes positive recorded totals that are lower bounds.
+
 The group comparison uses ranked full-suite runs with a recorded conditional attack success rate. Each run contributes its rate once, including separate runs of one model through different APIs. The median is the middle of the ordered unrounded rates, or the mean of the two middle rates for an even group size. Each view groups the same runs by one attribute. Model role, inference location, weight access and membership in the documented frontier baseline cohort are descriptive metadata. They do not affect admission, scoring or official rank. Guard subset results have a different case base and are available separately in the explorer.
 
 - **ASR (conditional)**: fraction of eligible attacked cases flipped.

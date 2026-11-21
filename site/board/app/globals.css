@@ -267,7 +267,7 @@ section[id] { scroll-margin-top: 84px; }
 .anat-slot.empty { border: 1px solid var(--ink-3); color: var(--ink-2); flex: 0 0 148px; justify-content: center; background: transparent; }
 .anat-slot.abstain { background: var(--seg-genuine); color: var(--ink); }
 .anat-slot.untyped {
-  background: repeating-linear-gradient(45deg, #232f3d 0 6px, #1a232f 6px 12px);
+  background: repeating-linear-gradient(45deg, var(--panel-2) 0 6px, var(--lift) 6px 12px);
   color: var(--ink-2);
 }
 .guardlines { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
@@ -446,7 +446,7 @@ button.xh.on { color: var(--accent); }
   margin: 16px 0 8px; padding: 12px 16px; font-size: 13.5px; color: var(--ink-2);
   border: 1px solid var(--line); border-radius: var(--radius-ctl); background: var(--panel);
 }
-.xdivider.flagged { color: var(--amber); border-color: rgba(232, 163, 61, 0.45); }
+.xdivider.flagged { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, transparent); }
 .xrow {
   position: relative; border: 1px solid var(--line-soft); border-radius: var(--radius);
   background: var(--panel); margin: 0 0 8px;
@@ -455,7 +455,7 @@ button.xh.on { color: var(--accent); }
 }
 .xrow.selected { border-color: var(--ink-3); }
 .xrow.open { border-color: var(--accent); }
-.xrow.flagged { border-color: rgba(232, 163, 61, 0.35); }
+.xrow.flagged { border-color: color-mix(in srgb, var(--amber) 35%, transparent); }
 .xrow-head { padding: 12px 16px; cursor: pointer; border-radius: var(--radius); transition: background-color var(--dur-micro) ease; }
 .xrow-head:hover { background: var(--panel-2); }
 .xrank { color: var(--ink-3); font-size: 13.5px; }
@@ -900,14 +900,14 @@ button.xh.on { color: var(--accent); }
 }
 .flip-prompt { white-space: pre-wrap; font-size: 15px; line-height: 1.55; color: var(--ink); margin: 12px 0 0; overflow-wrap: break-word; }
 .flip-span {
-  background: rgba(232, 163, 61, 0.16); color: inherit;
+  background: color-mix(in srgb, var(--amber) 16%, transparent); color: inherit;
   border-bottom: 1px solid var(--amber); border-radius: 3px; padding: 0.05em 0.15em;
 }
 .flip-key { display: flex; gap: 8px; align-items: flex-start; color: var(--ink-2); font-size: 13.5px; margin: 12px 0 0; }
 .flip-key strong { color: var(--ink); }
 .flip-swatch {
   flex: 0 0 auto; width: 12px; height: 12px; margin-top: 3px;
-  border-radius: 3px; background: rgba(232, 163, 61, 0.16);
+  border-radius: 3px; background: color-mix(in srgb, var(--amber) 16%, transparent);
   border-bottom: 1px solid var(--amber);
 }
 .flip-decision { border-top: 1px solid var(--line-soft); margin-top: 16px; padding-top: 12px; }

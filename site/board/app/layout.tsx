@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import { initializeTheme } from "@/lib/theme";
 import "./globals.css";
 import "./study.css";
 import "./explorer-refresh.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.BOARD_PUBLIC_ORIGIN ?? "https://peiratrial.dev"),
-  title: "Peira | Decision robustness benchmark",
-  description:
-    "Compare AI decisions before and after an attack. Explore model rankings, attack families, run costs and the evidence behind each result.",
+  metadataBase: new URL(
+    process.env.BOARD_PUBLIC_ORIGIN ?? process.env.CF_PAGES_URL ??
+      (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://peiratrial.dev"),
+  ),
 };
 
 export default function RootLayout({
@@ -16,7 +17,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: initializeTheme }} />
+      </head>
       <body>
         <link
           rel="preload"

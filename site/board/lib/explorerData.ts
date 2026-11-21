@@ -59,6 +59,7 @@ export interface XFamily {
 export interface XRow {
   runId: string;
   slug: string;
+  href: string;
   name: string;
   /** The full display name, organisation prefix kept, only the
    * pinned revision hash split out. The ladder prints this. */
@@ -539,6 +540,7 @@ function shapeRow(
   return {
     runId: row.run_id,
     slug: datum.slug,
+    href: datum.href,
     name: datum.name,
     fullName: splitDisplayName(row.display_name).name,
     wire: datum.wire,

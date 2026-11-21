@@ -73,7 +73,7 @@ function FamilyFinding({ rows }: { rows: BoardRow[] }) {
           </>
         )}
         <p className="study-finding-note">
-          A case can contribute once per result. Counted flips include attacked
+          The same case can contribute once for each model run. Counted flips include attacked
           abstentions and malformed outputs.
         </p>
         <a className="study-finding-link" href="#explorer?pop=full&mode=families">
@@ -111,7 +111,10 @@ function costResults(rows: BoardRow[]) {
     const cost = row.total_cost_usd;
     const asr = row.asr_conditional;
     if (cost === null || !Number.isFinite(cost) || cost <= 0 || asr === null) return [];
-    return [{ row, cost, asr, ci: displayCi(row), lowerBound: costIsLowerBound(row) }];
+    const families = [...familiesOf(row).values()];
+    const complete = families.length > 0 && families.every(f =>
+      f.nLatencyCalls !== null && f.nCostedCalls === f.nLatencyCalls);
+    return [{ row, cost, asr, ci: displayCi(row), lowerBound: costIsLowerBound(row), complete }];
   });
 }
 
@@ -119,7 +122,8 @@ function CostFinding({ rows, allRows }: { rows: BoardRow[]; allRows: BoardRow[] 
   const results = costResults(rows);
   if (results.length < 2) return null;
 
-  const lowerCost = results.filter(({ cost, lowerBound }) => cost < 1 && !lowerBound);
+  const complete = results.filter(result => result.complete);
+  const lowerCost = complete.filter(({ cost }) => cost < 1);
   const bestBelowDollar = lowerCost.length
     ? lowerCost.reduce((a, b) => a.asr <= b.asr ? a : b)
     : null;
@@ -131,7 +135,9 @@ function CostFinding({ rows, allRows }: { rows: BoardRow[]; allRows: BoardRow[] 
     return duplicateNames.has(name) ? `${name} · ${wireWords(row.wire)}` : name;
   };
   const rho = spearman(results.map(({ cost }) => cost), results.map(({ asr }) => asr));
-  const weakAssociation = Number.isFinite(rho) && Math.abs(rho) <= 0.2;
+  const completeRho = complete.length < 2 ? NaN : spearman(complete.map(r => r.cost), complete.map(r => r.asr));
+  const correlation = (value: number) => value.toFixed(2).replace("-", "−");
+  const partialCount = results.filter(result => result.lowerBound).length;
   const hasLowerBounds = results.some(({ lowerBound }) => lowerBound);
 
   const lowestCost = Math.min(...results.map(({ cost }) => cost));
@@ -158,19 +164,19 @@ function CostFinding({ rows, allRows }: { rows: BoardRow[]; allRows: BoardRow[] 
   return (
     <article className="study-finding" aria-labelledby="study-cost-heading">
       <div className="study-finding-copy">
-        <h3 id="study-cost-heading">
-          {weakAssociation ? "Run cost was a weak guide to robustness" : "How run cost relates to robustness"}
-        </h3>
-        {Number.isFinite(rho) && (
+        <h3 id="study-cost-heading">What did robustness cost?</h3>
+        {Number.isFinite(completeRho) && (
           <>
-            <p className="study-finding-stat">{rho.toFixed(2).replace("-", "−")}</p>
+            <p className="study-finding-stat">{correlation(completeRho)}</p>
             <p className="study-finding-context">
-              Spearman rank correlation across {fmtInt(results.length)} priced results
+              Spearman rank correlation between run cost and attack success across {fmtInt(complete.length)} fully priced results.
             </p>
-            {weakAssociation && (
-              <p>Runs ordered by recorded cost and by attack success had little agreement.</p>
-            )}
           </>
+        )}
+        {Number.isFinite(rho) && complete.length !== results.length && (
+          <p>Across all {fmtInt(results.length)} recorded costs, the correlation was {correlation(rho)}.
+            {partialCount > 0 && <> For {fmtInt(partialCount)} runs, the recorded cost is a lower bound.</>}
+          </p>
         )}
         {comparison && (
           <p className="study-finding-note">

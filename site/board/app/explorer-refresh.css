@@ -1,11 +1,12 @@
 .explorer {
-  --explorer-paper: #fffdfa;
-  --explorer-rule: #d3dacf;
-  --explorer-wash: #e8efe8;
-  --chart-field: #526f65;
-  --chart-quiet: #647a71;
-  --chart-caution: #a86a38;
-  --explorer-muted: #4e665e;
+  --explorer-paper: light-dark(#fffdfa, #192823);
+  --explorer-rule: light-dark(#d3dacf, #3e564d);
+  --explorer-wash: light-dark(#e8efe8, #263b33);
+  --chart-field: light-dark(#526f65, #93b6a8);
+  --chart-quiet: light-dark(#647a71, #809a90);
+  --chart-caution: light-dark(#a86a38, #edb483);
+  --chart-glyph: light-dark(#fffefa, #142b23);
+  --explorer-muted: var(--ink-3);
 }
 
 .explorer .sechead {
@@ -73,7 +74,7 @@
 .explorer .xfield input {
   width: 100%;
   min-height: 38px;
-  border-color: #aebeb2;
+  border-color: var(--control-line);
   border-radius: 4px;
   background: var(--explorer-paper);
   color: var(--ink);
@@ -144,13 +145,14 @@
 
 .explorer .ghostbtn,
 .explorer .pinbtn {
-  border-color: #aebeb2;
+  border-color: var(--control-line);
   color: var(--ink);
 }
 
 .explorer .segbtn.on,
-.explorer .pinbtn.on {
-  color: #fff;
+.explorer .pinbtn.on,
+.explorer .pinbtn.on:hover {
+  color: var(--on-accent);
 }
 
 .explorer .brush-clear {
@@ -202,7 +204,7 @@
 }
 
 .explorer .grid {
-  stroke: #c6d0c6;
+  stroke: var(--line);
   opacity: 1;
   pointer-events: none;
 }
@@ -248,13 +250,13 @@
 }
 
 .explorer .disc use {
-  color: white;
+  color: var(--chart-glyph);
   pointer-events: none;
 }
 
 .explorer .disc-letter,
 .explorer .disc-letter.subject-letter {
-  fill: white;
+  fill: var(--chart-glyph);
   font-size: 11.5px;
   pointer-events: none;
 }
@@ -283,14 +285,14 @@
 }
 
 .explorer .offscale-note {
-  border-color: #dbc7b4;
-  background: #fcf6ee;
+  border-color: light-dark(#dbc7b4, #785d45);
+  background: light-dark(#fcf6ee, #2b2720);
 }
 
 .explorer .chip {
-  border-color: #aebeb2;
+  border-color: var(--control-line);
   background: var(--explorer-paper);
-  box-shadow: 0 6px 20px #172e2b23;
+  box-shadow: var(--shadow-2);
   max-width: min(280px, calc(100% - 10px));
 }
 
@@ -321,7 +323,7 @@
   padding: 0 12px 12px;
   max-height: 600px;
   mask-image: none;
-  scrollbar-color: #aebeb2 transparent;
+  scrollbar-color: var(--control-line) transparent;
 }
 
 .chartsync-heading {
@@ -448,7 +450,7 @@
 }
 
 .explorer .tray {
-  box-shadow: 0 6px 20px #172e2b23;
+  box-shadow: var(--shadow-2);
 }
 
 @media (min-width: 1081px) {

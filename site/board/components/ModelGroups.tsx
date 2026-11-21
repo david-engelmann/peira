@@ -3,17 +3,18 @@
 import { useState } from "react";
 import { fmtPct } from "@/lib/format";
 import {
-  dimensionLabels, groupLabels, profileDimensions, type ProfileDimension,
+  dimensionLabels, groupLabels, profileDimensions, profileValue, type ProfileDimension,
 } from "@/lib/profileLabels";
-import type { modelProfile } from "@/lib/modelProfile";
+import type { ModelProfile } from "@/lib/modelProfile";
 
 type Observation = {
   rate: number;
-  profile: ReturnType<typeof modelProfile>;
+  profile: ModelProfile;
 };
 
 const notes: Record<ProfileDimension, string> = {
   kind: "Decision specialists are built for structured decisions. General-purpose models took the same test.",
+  interface: "Jev and OpenAI’s Decisions API take typed questions and return probabilities. The GPT-6 Luna chat run uses structured generation. Both Luna runs share the same model ID.",
   serving: "Local and hosted runs include different models. Their medians describe those groups. Measuring the effect of hosting would require running the same models both ways.",
   weights: "These groups describe access to model weights. A model can have downloadable weights even when Peira tested it through a hosted API. Unverified means the release status is unknown.",
   tier: "Peira’s frontier cohort includes named general-purpose baselines from OpenAI, Google, Anthropic, Moonshot, xAI, DeepSeek, Zhipu and MiniMax. The benchmark score plays no part in that designation.",
@@ -22,7 +23,7 @@ const notes: Record<ProfileDimension, string> = {
 function groupRates(observations: Observation[], dimension: ProfileDimension) {
   const groups = new Map<string, number[]>();
   for (const { profile, rate } of observations) {
-    const key = dimension === "tier" ? (profile.frontier ? "frontier" : "other") : profile[dimension];
+    const key = profileValue(profile, dimension);
     const rates = groups.get(key) ?? [];
     rates.push(rate);
     groups.set(key, rates);
@@ -38,7 +39,7 @@ function groupRates(observations: Observation[], dimension: ProfileDimension) {
 }
 
 export default function ModelGroups({ observations }: { observations: Observation[] }) {
-  const [dimension, setDimension] = useState<ProfileDimension>("kind");
+  const [dimension, setDimension] = useState<ProfileDimension>("interface");
   if (!observations.length) return null;
   const groups = groupRates(observations, dimension);
   const ceiling = Math.max(0.1, Math.ceil(Math.max(...observations.map(row => row.rate)) * 10) / 10);

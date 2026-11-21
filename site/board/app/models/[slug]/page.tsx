@@ -8,6 +8,8 @@ import {
   wireWords,
   type BoardRow,
 } from "@/lib/payload";
+import { resultShare, resultStaticParams } from "@/lib/resultShare";
+import { shareMetadata } from "@/lib/shareMetadata";
 
 /**
  * A model address in the redesign is the explorer opened with
@@ -29,9 +31,10 @@ function rowForSlug(slug: string): BoardRow | undefined {
   return rows.find((row) => modelSlug(row, rows) === slug);
 }
 
+export const dynamicParams = false;
+
 export function generateStaticParams() {
-  const rows = allRows();
-  return rows.map((row) => ({ slug: modelSlug(row, rows) }));
+  return resultStaticParams();
 }
 
 export async function generateMetadata({
@@ -40,15 +43,19 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const row = rowForSlug(slug);
-  if (!row) return {};
-  const rows = allRows();
-  const name = splitDisplayName(row.display_name).name;
-  const shared = duplicateShortNames(rows).has(shortName(row));
-  const title = shared
-    ? `${name} · ${wireWords(row.wire)} · Peira decision robustness board`
-    : `${name} · Peira decision robustness board`;
-  return { title };
+  const result = resultShare(slug);
+  if (!result) return {};
+  const { row, name, standing, attackDetail, decomposition } = result;
+  const description = [`${standing}.`, attackDetail, decomposition, row.unanswered, row.singleCall]
+    .filter(Boolean).join(" ");
+  const benign = row.benignText ? ` Benign accuracy: ${row.benignText}.` : "";
+  return shareMetadata({
+    title: `${name} · Peira decision robustness board`,
+    description,
+    path: row.href,
+    imagePath: `${row.href}share.png`,
+    imageAlt: `${name}. ${description}${benign}`,
+  });
 }
 
 export default async function ModelAddress({

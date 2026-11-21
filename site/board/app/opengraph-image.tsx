@@ -1,29 +1,60 @@
 import { ImageResponse } from "next/og";
+import { cardColors, ShareCard } from "@/components/ShareCard";
 import { boardGroups } from "@/lib/payload";
 import { fmtInt, fmtPct } from "@/lib/format";
+import { shareCardSize } from "@/lib/shareMetadata";
 
 export const dynamic = "force-static";
-export const size = { width: 1200, height: 630 };
+export const size = shareCardSize;
 export const contentType = "image/png";
-export const alt = "Peira decision robustness benchmark. Ranked full-suite attack success rates in ascending order.";
 
 export default function StudyPreview() {
   const { full, fullCases } = boardGroups();
   const rates = full.flatMap(row => row.asr_conditional === null ? [] : [row.asr_conditional]);
   const ceiling = Math.max(.1, Math.ceil(Math.max(0, ...rates) * 10) / 10);
   return new ImageResponse(
-    <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%",
-      background: "#123a31", color: "#f5f7ec", padding: "50px 60px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #8ba496", paddingBottom: 18 }}>
-        <span style={{ fontSize: 36, fontWeight: 700 }}>peira</span>
-        <span style={{ fontSize: 22 }}>Decision robustness benchmark</span>
+    <ShareCard label="Decision robustness benchmark">
+      <div style={{ display: "flex", gap: 42, alignItems: "center", flexGrow: 1 }}>
+        <div style={{ display: "flex", flexDirection: "column", width: 530 }}>
+          <div style={{ fontSize: 69, lineHeight: 1.02, fontWeight: 700, letterSpacing: "-4px" }}>
+            Which models hold up under attack?
+          </div>
+          <div style={{ fontSize: 26, lineHeight: 1.4, color: cardColors.quiet, marginTop: 22 }}>
+            Peira tests each decision twice, with and without adversarial input.
+          </div>
+        </div>
+        {rates.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
+            <span style={{ fontSize: 29, marginBottom: 16 }}>Attack success across the field</span>
+            <div style={{ display: "flex", height: 204, gap: 10 }}>
+              <div style={{
+                display: "flex", flexGrow: 1, gap: 3, alignItems: "flex-end",
+                borderTop: `1px solid ${cardColors.rule}`, borderBottom: `1px solid ${cardColors.rule}`,
+              }}>
+                {rates.map((rate, index) => (
+                  <div key={index} style={{
+                    flexGrow: 1, height: (202 * rate) / ceiling,
+                    background: index < 3 ? cardColors.accent : "#87ac9b",
+                  }} />
+                ))}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", fontSize: 17, color: cardColors.quiet }}>
+                <span>{`${Math.round(ceiling * 100)}%`}</span>
+                <span>0%</span>
+              </div>
+            </div>
+            <span style={{ color: cardColors.quiet, fontSize: 19, marginTop: 12 }}>Rates use eligible cases</span>
+          </div>
+        )}
       </div>
-      <div style={{ fontSize: 68, letterSpacing: "-3px", marginTop: 30 }}>Which models hold up under attack?</div>
-      <div style={{ fontSize: 25, color: "#d1ddd0", marginTop: 12 }}>{`${fmtInt(fullCases)} paired cases · ${rates.length} ranked full-suite results`}</div>
-      <div style={{ display: "flex", alignItems: "flex-end", height: 212, marginTop: 28, borderBottom: "1px solid #a1b6a6" }}>
-        {rates.map((rate, index) => <div key={index} style={{ flexGrow: 1, height: 212 * rate / ceiling, marginRight: 3, background: index < 3 ? "#d4f290" : "#87ac9b" }} />)}
+      <div style={{
+        display: "flex", justifyContent: "space-between", gap: 24, fontSize: 22,
+        borderTop: `1px solid ${cardColors.rule}`, paddingTop: 16, color: cardColors.quiet,
+      }}>
+        <span>{`${fmtInt(fullCases)} paired cases in the full suite`}</span>
+        {rates.length > 0 && <span>{`${rates.length} ranked full-suite results · lower attack success is better`}</span>}
       </div>
-      <div style={{ fontSize: 20, color: "#d1ddd0", marginTop: 14 }}>{rates.length ? `Attack success ranged from ${fmtPct(rates[0])} to ${fmtPct(rates[rates.length - 1])} of eligible cases · One bar per result` : "Attack success per eligible case"}</div>
-    </div>, size,
+    </ShareCard>,
+    size,
   );
 }

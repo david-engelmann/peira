@@ -8,6 +8,15 @@ import Headline from "@/components/Headline";
 import StudyFindings from "@/components/StudyFindings";
 import Explorer from "@/components/Explorer";
 import MethodStub from "@/components/MethodStub";
+import { shareMetadata } from "@/lib/shareMetadata";
+
+export const metadata = shareMetadata({
+  title: "Peira | Decision robustness benchmark",
+  description: "Compare AI decisions before and after an attack. Explore model rankings, attack families, run costs and the evidence behind each result.",
+  path: "/",
+  imagePath: "/opengraph-image",
+  imageAlt: "Peira decision robustness benchmark. Attack success across the ranked full-suite results, from lowest to highest.",
+});
 
 export default function Home() {
   const versions = boardVersions();
