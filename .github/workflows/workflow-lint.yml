@@ -154,6 +154,9 @@ jobs:
           # --- Rust toolchain -------------------------------------------
           channel = tomllib.loads((root / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
           print(f"rust-toolchain.toml channel: {channel}")
+          if (root / "rust-toolchain").exists():
+              fail("a legacy rust-toolchain file sits beside rust-toolchain.toml; "
+                   "rustup prefers the legacy file when both are present, so the channel would not govern")
 
           dockerfile = (root / "Dockerfile").read_text()
           # Line continuations flattened, so a value split across
@@ -195,6 +198,15 @@ jobs:
                   pin_sources = [s for s in sources if base(s) == "rust-toolchain.toml"]
                   dest_is_root = dest in (".", "./") or dest == workdir or dest == workdir + "/"
                   dest_is_pin = base(dest) == "rust-toolchain.toml" and not dest_is_root
+                  # The legacy rust-toolchain file (no extension) is
+                  # preferred by rustup over rust-toolchain.toml when
+                  # both are present, so delivering one by any name
+                  # onto the root or its own path re-pins the build.
+                  legacy_sources = [s for s in sources if base(s) == "rust-toolchain"]
+                  if base(dest) == "rust-toolchain" or (legacy_sources and dest_is_root):
+                      fail("Dockerfile delivers a legacy rust-toolchain file, which rustup prefers over rust-toolchain.toml; "
+                           "rust-toolchain.toml must stay the single source")
+                      continue
                   # A settings.toml delivered under .rustup/ installs
                   # directory overrides that beat the pin, by COPY as
                   # surely as by RUN.
@@ -246,8 +258,12 @@ jobs:
                   print("Dockerfile copies rust-toolchain.toml into the image before the build step")
               # Rewrite scan: any non-comment line outside the COPY
               # and ADD instructions (RUN steps and heredoc bodies)
-              # that writes onto the pin file. Quotes are stripped
-              # first, so a quoted destination is seen plainly.
+              # that writes onto the pin file, or onto the legacy
+              # rust-toolchain file, which rustup prefers over
+              # rust-toolchain.toml when both are present. Quotes are
+              # stripped first, so a quoted destination is seen
+              # plainly.
+              root_dirs = (".", "./", workdir, workdir + "/", workdir + "/.", "$PWD", "${PWD}")
               for line in flat.splitlines():
                   stripped = line.strip()
                   if not stripped or stripped.startswith("#"):
@@ -255,77 +271,88 @@ jobs:
                   if re.match(r"(?i)(COPY|ADD)\s", stripped):
                       continue
                   plain = line.replace('"', "").replace("'", "")
-                  if "rust-toolchain.toml" not in plain:
+                  if "rust-toolchain" not in plain:
                       continue
                   plain = re.sub(r"(?i)^\s*RUN\s+", "", plain)
-                  rewritten = bool(re.search(r">\s*\S*rust-toolchain\.toml\b", plain))
-                  if re.search(r"open\([^)]*,\s*[wa][bt+]?|\.write(?:_text|_bytes)?\(", plain):
-                      rewritten = True
-                  for segment in re.split(r"&&|;|\|", plain):
-                      segment = segment.split(">", 1)[0].split("#", 1)[0]
-                      toks = [t.strip("()") for t in segment.split()]
-                      toks = [t for t in toks if t]
-                      # Skip assignment and wrapper prefixes and any
-                      # path qualification, so the verb seen is the
-                      # command that actually runs.
-                      while toks and ("=" in toks[0] or toks[0].isdigit()
-                                      or base(toks[0]) in ("env", "command", "busybox", "sudo", "timeout", "nohup", "nice")):
-                          toks = toks[1:]
-                      if not toks:
+                  for target in ("rust-toolchain.toml", "rust-toolchain"):
+                      if target not in plain:
                           continue
-                      verb, rest = base(toks[0]), toks[1:]
-                      plain_args = [t for t in rest if not t.startswith("-")]
-                      if verb in ("cp", "mv", "ln", "install", "rsync"):
-                          if len(plain_args) >= 2 and base(plain_args[-1]) == "rust-toolchain.toml":
-                              rewritten = True
-                          if plain_args and plain_args[-1] in (".", "./", workdir, workdir + "/") and \
-                                  any(base(a) == "rust-toolchain.toml" for a in plain_args[:-1]):
-                              rewritten = True
-                          for i, t in enumerate(rest):
-                              tdir = None
-                              if t in ("-t", "--target-directory") and i + 1 < len(rest):
-                                  tdir = rest[i + 1]
-                              elif t.startswith("--target-directory="):
-                                  tdir = t.split("=", 1)[1]
-                              elif t.startswith("-t") and len(t) > 2:
-                                  tdir = t[2:]
-                              if tdir in (".", "./", workdir, workdir + "/") and \
-                                      any(base(a) == "rust-toolchain.toml" for a in plain_args):
+                      tail = r"\b" if target.endswith(".toml") else r"(?![\w.])"
+                      rewritten = bool(re.search(r">\s*\S*" + re.escape(target) + tail, plain))
+                      if re.search(r"open\([^)]*,\s*[wa][bt+]?|\.write(?:_text|_bytes)?\(", plain) and \
+                              (target.endswith(".toml") or re.search(r"rust-toolchain(?![\w.])", plain)):
+                          rewritten = True
+                      for segment in re.split(r"&&|;|\|", plain):
+                          segment = segment.split(">", 1)[0].split("#", 1)[0]
+                          toks = [t.strip("()") for t in segment.split()]
+                          toks = [t for t in toks if t]
+                          # Skip assignment and wrapper prefixes and
+                          # any path qualification, so the verb seen is
+                          # the command that actually runs.
+                          seen_wrapper = False
+                          while toks and ("=" in toks[0] or re.fullmatch(r"\d+[a-z]?", toks[0])
+                                          or base(toks[0]) in ("env", "command", "busybox", "sudo", "timeout", "nohup", "nice")
+                                          or (seen_wrapper and (toks[0].startswith("-")
+                                                                or (toks[0].isalpha() and toks[0].isupper())))):
+                              if base(toks[0]) in ("env", "command", "busybox", "sudo", "timeout", "nohup", "nice"):
+                                  seen_wrapper = True
+                              toks = toks[1:]
+                          if not toks:
+                              continue
+                          verb, rest = base(toks[0]), toks[1:]
+                          plain_args = [t for t in rest if not t.startswith("-")]
+                          if verb in ("cp", "mv", "ln", "install", "rsync"):
+                              if len(plain_args) >= 2 and base(plain_args[-1]) == target:
                                   rewritten = True
-                      elif verb == "tee":
-                          if any(base(t) == "rust-toolchain.toml" for t in plain_args):
-                              rewritten = True
-                      elif verb == "dd":
-                          if any(t.startswith("of=") and base(t[3:]) == "rust-toolchain.toml" for t in rest):
-                              rewritten = True
-                      elif verb in ("sed", "perl"):
-                          inplace = any(t.startswith("--in-place")
-                                        or (not t.startswith("--") and re.match(r"-[a-zA-Z]*i", t)) for t in rest)
-                          if inplace and any(base(t) == "rust-toolchain.toml" for t in plain_args):
-                              rewritten = True
-                      elif verb in ("curl", "wget"):
-                          if verb == "curl" and any(t == "--remote-name"
-                                                    or re.fullmatch(r"-[a-zA-Z]*O[a-zA-Z]*", t) for t in rest) \
-                                  and any(base(t) == "rust-toolchain.toml" for t in plain_args):
-                              rewritten = True
-                          for i, t in enumerate(rest):
-                              value = None
-                              if t in ("-o", "-O", "--output", "--output-document") and i + 1 < len(rest):
-                                  value = rest[i + 1]
-                              elif t.startswith("--output=") or t.startswith("--output-document="):
-                                  value = t.split("=", 1)[1]
-                              elif re.fullmatch(r"-[a-zA-Z]*[oO]", t) and i + 1 < len(rest):
-                                  value = rest[i + 1]
-                              else:
-                                  glued = re.fullmatch(r"-[a-zA-Z]*[oO]=(.*)", t) or \
-                                          re.fullmatch(r"-[a-zA-Z]*[oO](.+)", t)
-                                  if glued:
-                                      value = glued.group(1)
-                              if value is not None and base(value) == "rust-toolchain.toml":
+                              if plain_args and plain_args[-1] in root_dirs and \
+                                      any(base(a) == target for a in plain_args[:-1]):
                                   rewritten = True
-                  if rewritten:
-                      fail("Dockerfile rewrites rust-toolchain.toml in a later step; "
-                           "the pin must be the repository's own file")
+                              for i, t in enumerate(rest):
+                                  tdir = None
+                                  if t in ("-t", "--target-directory") and i + 1 < len(rest):
+                                      tdir = rest[i + 1]
+                                  elif t.startswith("--target-directory="):
+                                      tdir = t.split("=", 1)[1]
+                                  elif t.startswith("-t") and len(t) > 2:
+                                      tdir = t[2:]
+                                  if tdir in root_dirs and \
+                                          any(base(a) == target for a in plain_args):
+                                      rewritten = True
+                          elif verb == "tee":
+                              if any(base(t) == target for t in plain_args):
+                                  rewritten = True
+                          elif verb == "dd":
+                              if any(t.startswith("of=") and base(t[3:]) == target for t in rest):
+                                  rewritten = True
+                          elif verb in ("sed", "perl"):
+                              inplace = any(t.startswith("--in-place")
+                                            or (not t.startswith("--") and re.match(r"-[a-zA-Z]*i", t)) for t in rest)
+                              if inplace and any(base(t) == target for t in plain_args):
+                                  rewritten = True
+                          elif verb in ("curl", "wget"):
+                              if verb == "curl" and any(t.startswith("--remote-name")
+                                                        or re.fullmatch(r"-[a-zA-Z]*O[a-zA-Z]*", t) for t in rest) \
+                                      and any(base(t) == target for t in plain_args):
+                                  rewritten = True
+                              for i, t in enumerate(rest):
+                                  value = None
+                                  if t in ("-o", "-O", "--output", "--output-document") and i + 1 < len(rest):
+                                      value = rest[i + 1]
+                                  elif t.startswith("--output=") or t.startswith("--output-document="):
+                                      value = t.split("=", 1)[1]
+                                  elif re.fullmatch(r"-[a-zA-Z]*[oO]", t) and i + 1 < len(rest):
+                                      value = rest[i + 1]
+                                  else:
+                                      glued = re.fullmatch(r"-[a-zA-Z]*[oO]=(.*)", t) or \
+                                              re.fullmatch(r"-[a-zA-Z]*[oO](.+)", t)
+                                      if glued:
+                                          value = glued.group(1)
+                                  if value is not None and base(value) == target:
+                                      rewritten = True
+                      if rewritten:
+                          fail(f"Dockerfile rewrites {target} in a later step; "
+                               "the pin must be the repository's own file")
+                          break
               if re.search(r"\.rustup/settings\.toml", flat):
                   fail("Dockerfile mentions rustup's settings.toml, where directory overrides beat rust-toolchain.toml; "
                        "rust-toolchain.toml must stay the single source")
