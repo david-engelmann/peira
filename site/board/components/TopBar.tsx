@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   applyThemePreference,
   readThemePreference,
@@ -52,25 +52,32 @@ function ThemeSelect() {
   );
 }
 
-/**
- * The top bar, in the pattern of the Maidan landing bar
- * (web/landing/src/styles.css, .top and .top.scrolled).
- * Transparent over the first screen; once the page scrolls it
- * frosts, backdrop blur and saturate over a hairline bottom
- * edge, and it sticks while the scenes pass under it. The
- * links stand in page order, each a 44px target. The frost
- * transition is a color change at the entrance duration
- * (--dur-enter, 280ms), the motion cap, and the reduced
- * motion branch in the stylesheet removes it.
- */
+// Scrolling applies the masthead frost at the entrance duration (--dur-enter, 280ms).
 export default function TopBar() {
+  const nav = useRef<HTMLElement>(null);
   const [scrolled, setScrolled] = useState(false);
+  const [active, setActive] = useState<string>("results");
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    const links = nav.current?.querySelectorAll<HTMLAnchorElement>('a[href^="#"]') ?? [];
+    const elements = Array.from(links, link => document.getElementById(link.hash.slice(1)));
+    let frame = 0;
+    const sync = () => {
+      frame = 0;
+      setScrolled(window.scrollY > 8);
+      const offset = Math.min(180, window.innerHeight * 0.28);
+      const current = elements.filter(el => el && el.getBoundingClientRect().top <= offset).at(-1);
+      setActive(current?.id ?? "results");
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(sync); };
+    sync();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      cancelAnimationFrame(frame);
+    };
   }, []);
 
   return (
@@ -84,11 +91,11 @@ export default function TopBar() {
         </svg>
         <span className="brand-name">peira</span>
       </a>
-      <nav className="mastnav" aria-label="Page">
-        <a href="#results">Overview</a>
-        <a href="#findings">Analysis</a>
-        <a href="#explorer">Explorer</a>
-        <a className="mastnav-tail" href="#method">Method</a>
+      <nav ref={nav} className="mastnav" aria-label="Page">
+        <a href="#results" aria-current={active === "results" ? "location" : undefined}>Overview</a>
+        <a href="#findings" aria-current={active === "findings" ? "location" : undefined}>Analysis</a>
+        <a href="#explorer" aria-current={active === "explorer" ? "location" : undefined}>Explorer</a>
+        <a className="mastnav-tail" href="#method" aria-current={active === "method" ? "location" : undefined}>Method</a>
         <a className="mastnav-tail" href="/payload.json">Data</a>
       </nav>
       <details className="mastmore">

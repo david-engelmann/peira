@@ -835,8 +835,33 @@ test("the plot pads its right edge and the discs read at floor size", () => {
   assert.ok(explorer.includes("const padR = 30;"));
   assert.ok(explorer.includes("r={subject ? 17 : 15}"));
   assert.match(chartCss, /\.disc-face \{\s*fill: var\(--chart-field\);\s*stroke: var\(--chart-field\)/);
-  assert.match(chartCss, /--chart-glyph: light-dark\(#fffefa, #142b23\);/);
   assert.match(chartCss, /\.disc-letter\.subject-letter \{\s*fill: var\(--chart-glyph\);\s*font-size: 11\.5px;/);
+  assert.match(chartCss, /\.disc\.subject \.disc-letter \{ fill: var\(--on-accent\); \}/);
+  const themeColors = (source, token) => {
+    const match = source.match(new RegExp(`${token}: light-dark\\((#[a-f0-9]{3,6}), (#[a-f0-9]{3,6})\\);`));
+    assert.ok(match, `${token} specifies both themes`);
+    return match.slice(1);
+  };
+  const luminance = (hex) => {
+    const channels = hex.length === 4 ? [...hex.slice(1)].map(v => v + v) : hex.slice(1).match(/../g);
+    const [r, g, b] = channels.map(v => {
+      const s = parseInt(v, 16) / 255;
+      return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const checkGlyph = (source, text, backgrounds) => {
+    const glyph = themeColors(source, text);
+    for (const background of backgrounds) {
+      themeColors(source, background).forEach((color, i) => {
+        const [a, b] = [luminance(color), luminance(glyph[i])];
+        const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+        assert.ok(ratio >= 4.5, `${text} on ${background} in ${i ? "dark" : "light"} has ${ratio.toFixed(2)}:1 contrast`);
+      });
+    }
+  };
+  checkGlyph(chartCss, "--chart-glyph", ["--chart-field", "--chart-quiet"]);
+  checkGlyph(read("app/study.css"), "--on-accent", ["--accent"]);
   assert.match(chartCss, /\.disc\.field\.greyed \{\s*opacity: 1;/);
   assert.match(chartCss, /\.chartsync \{[^}]*mask-image: none;/);
   assert.match(chartCss, /\.chartsync-heading \{\s*position: sticky;/);
@@ -1509,11 +1534,15 @@ test("the two API results retain distinct measured intervals", () => {
 });
 
 test("the field chart uses a shared zero baseline and percent scale", () => {
-  const chart = read("components/Headline.tsx");
-  assert.ok(chart.includes("100 * rate / ceiling"));
-  assert.ok(chart.includes("[ceiling, ceiling / 2, 0]"));
-  assert.ok(chart.includes("comparisons.map(({ row, rate }"));
-  assert.ok(read("app/study.css").includes("align-items: flex-end"));
+  const headline = read("components/Headline.tsx");
+  const chart = read("components/DistributionChart.tsx");
+  const styles = read("components/distribution-chart.css");
+  assert.ok(headline.includes("comparisons.map(({ row, rate }"));
+  assert.ok(chart.includes("10000 * rate / ceiling"));
+  assert.ok(chart.includes("100 * tick / ceiling"));
+  assert.match(styles, /\.distribution-scale \{[^}]*inset: 0;/);
+  assert.match(styles, /\.distribution-bars \{[^}]*inset: 0;/);
+  assert.match(styles, /\.distribution-bar \{[^}]*align-items: flex-end;/);
 });
 
 test("the pulled run's undecided case stands nowhere in the findings", () => {
@@ -1800,9 +1829,9 @@ test("the token hygiene the re-score named stands as audited", () => {
   // fails if either side of that standing is removed.
   const design = read("DESIGN.md");
   const study = read("app/study.css");
-  assert.ok(design.includes('ground: "#faf9f5"') && study.includes("--ground: light-dark(#faf9f5, #121d1b);"));
-  assert.ok(design.includes('ink-1: "#172e2b"') && study.includes("--ink: light-dark(#172e2b, #e8eee4);"));
-  assert.ok(study.includes("--shadow-1: none;"));
+  assert.ok(design.includes('ground: "#f6f8fd"') && study.includes("--ground: light-dark(#f6f8fd, #0b1020);"));
+  assert.ok(design.includes('ink-1: "#111931"') && study.includes("--ink: light-dark(#111931, #f3f6ff);"));
+  assert.ok(study.includes("--shadow-1: 0 2px 5px light-dark(#27354d0b, #03081524);"));
   assert.ok(css.includes("--ease-out: cubic-bezier(0.23, 1, 0.32, 1);"));
   // The dead banner rule is gone from this sheet, and no
   // page in this tree renders the banner it styled.
@@ -2113,9 +2142,11 @@ test("the method scene stands in the scene rhythm at every width", () => {
 
 test("the cover preserves legible model labels at phone width", () => {
   const styles = read("app/study.css");
-  assert.match(styles, /@media \(max-width: 800px\)[\s\S]*?\.study-cover \{ grid-template-columns: 1fr;/);
-  assert.match(styles, /\.field-plate li a \{[^}]*overflow-wrap: anywhere/);
-  assert.match(styles, /\.plate-bars i \{[^}]*flex: 1/);
+  const chart = read("components/distribution-chart.css");
+  assert.match(styles, /@media \(max-width: 870px\) \{\s*\.study-cover \{ grid-template-columns: 1fr;/);
+  assert.match(chart, /\.field-plate li a \{[^}]*overflow-wrap: anywhere/);
+  assert.match(chart, /\.distribution-bars \{[^}]*grid-template-columns: repeat\(var\(--bar-count\), minmax\(0, 1fr\)\)/);
+  assert.match(chart, /@media \(pointer: coarse\) \{\s*\.distribution-actions button \{ width: 44px; height: 44px;/);
 });
 
 test("every model address names its own result", () => {

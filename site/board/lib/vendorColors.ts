@@ -91,7 +91,7 @@ export function vendorColorOf(row: {
  * panel by the smallest five percent step that clears the
  * 4.5:1 floor for both vendor marks and monograms.
  */
-const CHIP_PANELS = { light: "#fffefa", dark: "#192823" };
+const CHIP_PANELS = { light: "#ffffff", dark: "#141e32" };
 const CHIP_TINT_SHARE = 0.16;
 export const CHIP_MARK_FLOOR = 4.5;
 const CHIP_MARK_STEPS = 20;

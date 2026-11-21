@@ -80,7 +80,11 @@ export default function ModelGroups({ observations }: { observations: Observatio
         <div className="group-columns group-axis" aria-hidden="true">
           <span /><span><span>0%</span><span>{Math.round(ceiling * 100)}%</span></span><span />
         </div>
-        <p className="group-legend">Each tick represents one full-suite result. The diamond marks the median attack success rate. Lower is better.</p>
+        <p className="group-legend">
+          <span className="group-legend-result">One full-suite result</span>
+          <span className="group-legend-median">Median attack success</span>
+          <span>Lower is better.</span>
+        </p>
       </div>
     </section>
   );

@@ -75,6 +75,30 @@ test("the overview discloses malformed-majority headline rates and keeps other r
   ]);
 });
 
+test("the overview plots only ranked full-suite rates with a shared zero baseline", () => {
+  const payload = readPayload();
+  const { boardGroups, modelSlug } = loadBoard(payload, "lib/payload.ts");
+  const { full, slices, flagged } = boardGroups();
+  const ranked = full.filter((row) => row.asr_conditional !== null);
+  const Headline = loadBoard(payload, "components/Headline.tsx").default;
+  const html = renderToStaticMarkup(createElement(Headline));
+  const bars = [...html.matchAll(/<button class="distribution-bar"[^>]*><span aria-hidden="true" style="height:([\d.]+)%"/g)];
+  const ticks = [...html.matchAll(/class="distribution-tick" style="bottom:([\d.]+)%"><span>([\d.]+)%/g)];
+  assert.equal(bars.length, ranked.length);
+  assert.equal(bars.filter(([tag]) => tag.includes('data-featured="true"')).length, 3);
+  assert.equal(bars.filter(([tag]) => tag.includes('tabindex="0"')).length, 1);
+  assert.match(bars[0][0], /aria-pressed="true"/);
+  assert.deepEqual(ticks[0].slice(1), ["0", "0"]);
+  const [, top, ceiling] = ticks.at(-1).map(Number);
+  assert.equal(top, 100);
+  for (const [index, [, height]] of bars.entries()) {
+    assert.ok(Number(height) <= 100);
+    assert.ok(Math.abs(Number(height) * ceiling / 10000 - ranked[index].asr_conditional) < 1e-12);
+  }
+  const link = `#result=${encodeURIComponent(modelSlug(ranked[0], [...full, ...slices, ...flagged]))}`;
+  assert.ok(html.includes(`class="distribution-link" href="${link}"`));
+});
+
 test("the study renders exact pooled family counts and rates from the ranked full suite", () => {
   const html = renderStudy(readPayload());
   assert.match(html, /41 ranked full-suite results, tested on the same 4,701 paired cases per result/);
