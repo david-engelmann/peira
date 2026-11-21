@@ -121,10 +121,10 @@ test("the study plots all priced ranked full-suite results and discloses their i
   assert.equal([...html.matchAll(/class="study-scatter-point\b/g)].length, 32);
   assert.equal([...html.matchAll(/class="study-scatter-whisker\b/g)].length, 32);
   assert.equal([...html.matchAll(/class="study-scatter-point study-scatter-highlight\b/g)].length, 2);
-  assert.match(html, /gpt-6-luna · Decisions API · \$0\.2922 · 10\.7%/);
+  assert.match(html, /gpt-6-luna · Decisions API, OpenAI · \$0\.2922 · 10\.7%/);
   assert.match(html, /href="\/models\/gpt-6-luna-openai-decisions\/"/);
   assert.match(html, /10\.7% <span>9\.8% to 11\.6%/);
-  assert.match(html, /claude-fable-5-1 · ≥\$130\.31 · 28\.5%/);
+  assert.match(html, /claude-fable-5-1, Anthropic · ≥\$130\.31 · 28\.5%/);
   assert.match(html, /at least <strong>\$130\.31<\/strong>/);
   assert.match(html, /href="#explorer\?pop=full&amp;mode=chart"/);
   const points = [...html.matchAll(/<button class="study-scatter-point[^>]+>/g)].map(([tag]) => tag);
