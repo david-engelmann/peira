@@ -114,9 +114,14 @@ jobs:
     # of truth, or the Dockerfile and CI silently build against
     # different toolchains. Fails loudly on drift:
     #   - Rust: rust-toolchain.toml [toolchain].channel is the source.
-    #     The Dockerfile rust-builder FROM tag must equal it, and no
-    #     workflow may override dtolnay/rust-toolchain with an explicit
-    #     version input (the action honors rust-toolchain.toml).
+    #     A Dockerfile rust-builder stage's FROM tag must equal it. A
+    #     single-stage Dockerfile instead installs Rust via rustup and
+    #     must copy rust-toolchain.toml into the image before the build
+    #     step, with no --default-toolchain override and no
+    #     RUSTUP_TOOLCHAIN override, so the file still selects the
+    #     toolchain. Either way, no workflow may override
+    #     dtolnay/rust-toolchain with an explicit version input (the
+    #     action honors rust-toolchain.toml).
     #   - Python build backend: pyproject.toml [build-system] is the
     #     source. No consumer (workflows, Dockerfile) may invoke maturin
     #     unless the declared backend is maturin.
@@ -152,12 +157,44 @@ jobs:
 
           dockerfile = (root / "Dockerfile").read_text()
           m = re.search(r"^FROM\s+rust:([^-:\s]+?)(?:-[\w.-]+)?\s+AS\s+rust-builder", dockerfile, re.M)
-          if m is None:
-              fail("Dockerfile has no rust-builder stage to compare against rust-toolchain.toml")
-          elif m.group(1) != channel:
-              fail(f"Dockerfile rust-builder pins rust:{m.group(1)} but rust-toolchain.toml channel is {channel}")
+          if m is not None:
+              # Multi-stage form (the layout this checker was written
+              # for): the builder stage's image tag is the Docker-side
+              # pin and must equal the channel.
+              if m.group(1) != channel:
+                  fail(f"Dockerfile rust-builder pins rust:{m.group(1)} but rust-toolchain.toml channel is {channel}")
+              else:
+                  print(f"Dockerfile rust-builder ({m.group(1)}) matches rust-toolchain.toml")
+          elif "rustup" in dockerfile:
+              # Single-stage form (the Dockerfile since the maturin
+              # switch): Rust is installed via rustup with no default
+              # toolchain selected, and rust-toolchain.toml, copied
+              # into the image before the build step, selects the
+              # toolchain for every cargo invocation. Guard the three
+              # ways that arrangement could silently fork the pin.
+              copy_m = re.search(r"^COPY\s+[^#\n]*\brust-toolchain\.toml\b", dockerfile, re.M)
+              build_m = re.search(r"^RUN\s+.*\bpip install\b[^\n]*\s\.", dockerfile, re.M)
+              if copy_m is None:
+                  fail("Dockerfile installs Rust via rustup but never copies rust-toolchain.toml into the image; "
+                       "the build would run on rustup's unpinned default, not the channel")
+              elif build_m is None:
+                  fail("Dockerfile installs Rust via rustup but has no pip install build step for the project; "
+                       "the checker cannot verify the pin is in the image before the build")
+              elif copy_m.start() > build_m.start():
+                  fail("Dockerfile copies rust-toolchain.toml after the pip install build step; "
+                       "the pin must be in the image before the build runs")
+              else:
+                  print("Dockerfile copies rust-toolchain.toml into the image before the build step")
+              dt = re.search(r"--default-toolchain\s+(\S+)", dockerfile)
+              if dt is not None and dt.group(1) != "none":
+                  fail(f"Dockerfile's rustup install sets --default-toolchain {dt.group(1)}; "
+                       "rust-toolchain.toml must stay the single source")
+              if re.search(r"^(ENV|ARG)\s+RUSTUP_TOOLCHAIN\b", dockerfile, re.M):
+                  fail("Dockerfile sets RUSTUP_TOOLCHAIN, which overrides rust-toolchain.toml; "
+                       "rust-toolchain.toml must stay the single source")
           else:
-              print(f"Dockerfile rust-builder ({m.group(1)}) matches rust-toolchain.toml")
+              fail("Dockerfile has neither a rust-builder stage nor a rustup install; "
+                   "no Rust toolchain pin can be verified")
 
           # dtolnay/rust-toolchain honors rust-toolchain.toml; a version
           # input here would silently fork the toolchain between CI jobs.
