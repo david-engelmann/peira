@@ -1,0 +1,114 @@
+# Dependency review (GitHub free-tooling pilot, item 1; the uv
+# submission job was added by the free-tooling follow-on lane).
+#
+# Advisory only. This workflow is never made a required check; promotion
+# would be a separate decision under the /trunk skip-check house rule.
+# It diffs a PR's dependency graph against the base branch and fails if
+# the PR introduces a dependency with a known vulnerability at high
+# severity or above in the GitHub Advisory Database. Dependabot alerts
+# only fire after a vulnerable dependency lands; this is the pre-merge
+# counterpart.
+#
+# Coverage is exactly what the dependency graph sees. The static graph
+# covers Cargo.lock and the workflow YAML files. The Python
+# dependencies are declared in pyproject.toml and uv.lock, and the
+# graph does not parse uv.lock (GitHub's supported ecosystems table
+# lists requirements.txt, Pipfile.lock and poetry.lock for Python, not
+# uv.lock), so the submit-uv-dependencies job below converts uv.lock
+# into a dependency-graph snapshot with scripts/uv_lock_snapshot.py
+# and submits it for the PR head commit. The review job runs only
+# after the submission, per GitHub's documented best practice of
+# running submission and review in the same workflow so the order of
+# execution is controlled. The Dependency submission workflow keeps
+# the base branch's graph equally complete on every push to main, so
+# the review diffs two real graphs. On fork PRs the submit job is
+# skipped (a fork token is read-only and cannot submit), and the
+# review then covers the static graph only, as it did before the
+# submission existed.
+#
+# When a run finds dependency changes, the full review lands in the
+# job summary; on failure it is also posted as a PR comment, except on
+# fork PRs, whose token is read-only and cannot comment; a fork PR
+# gets the check result and the job summary. A run that finds no
+# dependency changes writes no summary.
+#
+# This file is the fleet rollout template. It works only on public
+# repositories with the dependency graph enabled; on a private
+# repository without GitHub Advanced Security the action cannot read
+# dependency data and the check fails on every PR. The uv submission
+# half of the template is three files that travel together: this
+# workflow, dependency-submission.yml, and
+# scripts/uv_lock_snapshot.py.
+name: Dependency review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref; a newer push makes the older
+# run's result meaningless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  submit-uv-dependencies:
+    # Converts uv.lock to a dependency-graph snapshot for the PR head
+    # commit and submits it, so the review below can see the Python
+    # dependencies. Same-repo PRs only: submitting needs a token with
+    # Contents: write, which a fork PR's token never has.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Submit the uv.lock snapshot for the PR head
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.number }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 scripts/uv_lock_snapshot.py \
+            --lock uv.lock \
+            --repo "$REPO" \
+            --sha "$HEAD_SHA" \
+            --ref "refs/pull/$PR_NUMBER/head" \
+            --correlator "uv-lock-submission" \
+            --job-id "$RUN_ID"
+
+  dependency-review:
+    needs: submit-uv-dependencies
+    # Run after a successful submission, and also when the submit job
+    # was skipped (fork PRs), so forks keep the static-graph review
+    # they had before. A failed or cancelled submission skips the
+    # review instead of letting it judge a partial graph.
+    if: ${{ always() && (needs.submit-uv-dependencies.result == 'success' || needs.submit-uv-dependencies.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Post the review summary as a PR comment when the review fails.
+      pull-requests: write
+    steps:
+      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: high
+          # The action's own default fails only runtime-scope changes;
+          # the review here covers every scope, development included.
+          fail-on-scopes: runtime, development, unknown
+          comment-summary-in-pr: 'on-failure'
+          # Snapshot warnings mean part of the comparison may be
+          # missing; retry rather than pass on partial data.
+          retry-on-snapshot-warnings: true

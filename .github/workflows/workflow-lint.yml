@@ -41,7 +41,7 @@ jobs:
         id: fallback
         # Skip the API check for fork PRs; they stay on GitHub-hosted.
         if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: mikehardy/runner-fallback-action@v1
+        uses: mikehardy/runner-fallback-action@dc7732f9e532c451b2527b288ba8d58fd4b0a4ca # v1
         with:
           primary-runner: "self-hosted,runner-grid"
           fallback-runner: "ubuntu-latest"
@@ -80,6 +80,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install actionlint (pinned)
         env:
@@ -112,9 +114,17 @@ jobs:
     # of truth, or the Dockerfile and CI silently build against
     # different toolchains. Fails loudly on drift:
     #   - Rust: rust-toolchain.toml [toolchain].channel is the source.
-    #     The Dockerfile rust-builder FROM tag must equal it, and no
-    #     workflow may override dtolnay/rust-toolchain with an explicit
-    #     version input (the action honors rust-toolchain.toml).
+    #     A Dockerfile rust-builder stage's FROM tag must equal it. A
+    #     single-stage Dockerfile instead installs Rust via rustup and
+    #     must copy rust-toolchain.toml into the image before the build
+    #     step, and the checker also guards the ways the pin could be
+    #     silently displaced: a later step rewriting the file, a legacy
+    #     rust-toolchain file (which rustup prefers over the .toml),
+    #     a supplied settings.toml, rustup default or override, a
+    #     --default-toolchain other than none, and RUSTUP_TOOLCHAIN.
+    #     Either way, no workflow may override dtolnay/rust-toolchain
+    #     with an explicit version input (the action honors
+    #     rust-toolchain.toml).
     #   - Python build backend: pyproject.toml [build-system] is the
     #     source. No consumer (workflows, Dockerfile) may invoke maturin
     #     unless the declared backend is maturin.
@@ -127,6 +137,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
@@ -145,15 +157,230 @@ jobs:
           # --- Rust toolchain -------------------------------------------
           channel = tomllib.loads((root / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
           print(f"rust-toolchain.toml channel: {channel}")
+          if (root / "rust-toolchain").exists():
+              fail("a legacy rust-toolchain file sits beside rust-toolchain.toml; "
+                   "rustup prefers the legacy file when both are present, so the channel would not govern")
 
           dockerfile = (root / "Dockerfile").read_text()
-          m = re.search(r"^FROM\s+rust:([^-:\s]+?)(?:-[\w.-]+)?\s+AS\s+rust-builder", dockerfile, re.M)
-          if m is None:
-              fail("Dockerfile has no rust-builder stage to compare against rust-toolchain.toml")
-          elif m.group(1) != channel:
-              fail(f"Dockerfile rust-builder pins rust:{m.group(1)} but rust-toolchain.toml channel is {channel}")
-          else:
-              print(f"Dockerfile rust-builder ({m.group(1)}) matches rust-toolchain.toml")
+          # Line continuations flattened, so a value split across
+          # lines is still seen whole by the scans below.
+          flat = dockerfile.replace("\\\n", " ")
+          m = re.search(r"^FROM\s+(?:--\S+\s+)*rust:([^-:\s@]+?)(?:-[\w.-]+)?(?:@sha256:[0-9a-fA-F]+)?\s+AS\s+rust-builder", dockerfile, re.M | re.I)
+          if m is not None:
+              # Multi-stage form (the layout this checker was written
+              # for): the builder stage's image tag is the Docker-side
+              # pin and must equal the channel.
+              if m.group(1) != channel:
+                  fail(f"Dockerfile rust-builder pins rust:{m.group(1)} but rust-toolchain.toml channel is {channel}")
+              else:
+                  print(f"Dockerfile rust-builder ({m.group(1)}) matches rust-toolchain.toml")
+          rustup_form = re.search(r"^RUN\s[^\n]*(sh\.rustup\.rs|rustup-init)", flat, re.M | re.I)
+          if rustup_form is not None:
+              # Single-stage form (the Dockerfile since the maturin
+              # switch): Rust is installed via rustup with no default
+              # toolchain selected, and rust-toolchain.toml, copied
+              # into the image before the build step, selects the
+              # toolchain for every cargo invocation. These guards run
+              # whenever this form is present, alongside the stage
+              # check above if both forms appear, and they scan the
+              # whole file: an override forks the pin from wherever
+              # in the file it is written.
+              build_m = re.search(r"^RUN\s+.*\bpip install\b[^\n]*?(?:\s-e(?:\s|=)|\s\.(?:\s|$))", flat, re.M | re.I)
+              workdir = "/"
+              for wm in re.finditer(r"^WORKDIR\s+(\S+)", flat, re.M | re.I):
+                  if build_m is None or wm.start() < build_m.start():
+                      workdir = wm.group(1)
+              pin_copy = None
+              base = lambda p: p.rstrip("/").rsplit("/", 1)[-1]
+              for cm in re.finditer(r"^(?:COPY|ADD)\s+([^\n]*)$", flat, re.M | re.I):
+                  args = [t.strip('[]",') for t in cm.group(1).split()]
+                  paths = [a for a in args if a and not a.startswith("--")]
+                  if len(paths) < 2:
+                      continue
+                  sources, dest = paths[:-1], paths[-1]
+                  pin_sources = [s for s in sources if base(s) == "rust-toolchain.toml"]
+                  dest_is_root = dest in (".", "./") or dest == workdir or dest == workdir + "/"
+                  dest_is_pin = base(dest) == "rust-toolchain.toml" and not dest_is_root
+                  # The legacy rust-toolchain file (no extension) is
+                  # preferred by rustup over rust-toolchain.toml when
+                  # both are present, so delivering one by any name
+                  # onto the root or its own path re-pins the build.
+                  legacy_sources = [s for s in sources if base(s) == "rust-toolchain"]
+                  if base(dest) == "rust-toolchain" or (legacy_sources and dest_is_root):
+                      fail("Dockerfile delivers a legacy rust-toolchain file, which rustup prefers over rust-toolchain.toml; "
+                           "rust-toolchain.toml must stay the single source")
+                      continue
+                  # A settings.toml delivered under .rustup/ installs
+                  # directory overrides that beat the pin, by COPY as
+                  # surely as by RUN.
+                  if ".rustup" in dest and (base(dest) == "settings.toml"
+                                            or any(base(s) == "settings.toml" for s in sources)):
+                      fail("Dockerfile copies a settings.toml under .rustup, where directory overrides beat rust-toolchain.toml; "
+                           "rust-toolchain.toml must stay the single source")
+                      continue
+                  # A directory or glob source landing on the image
+                  # root or the pin path can carry a namesake pin the
+                  # basename scan cannot see into; fail safe. A bare
+                  # extensionless name is opaque for the same reason:
+                  # flat text cannot tell a directory from a file.
+                  if dest_is_root or dest_is_pin:
+                      if any(s.endswith("/") or s in (".", "./") or any(g in s for g in "*?[")
+                             or "." not in base(s) for s in sources):
+                          fail("Dockerfile copies a directory, glob, or extensionless source onto the image root; "
+                               "the checker cannot verify it does not replace rust-toolchain.toml")
+                          continue
+                  if not pin_sources and not dest_is_pin:
+                      continue
+                  from_stage = any(a.startswith("--from") for a in args)
+                  own = [s for s in pin_sources
+                         if s in ("rust-toolchain.toml", "./rust-toolchain.toml") and not from_stage]
+                  if dest_is_pin and not own:
+                      fail("Dockerfile copies a different file onto rust-toolchain.toml; "
+                           "the pin must be the repository's own file")
+                  if dest_is_root and pin_sources:
+                      if from_stage:
+                          fail("Dockerfile copies rust-toolchain.toml from another build stage; "
+                               "the pin must be the repository's own file")
+                      elif len(own) != len(pin_sources):
+                          fail("Dockerfile copies a different rust-toolchain.toml over the pin; "
+                               "the pin must be the repository's own file")
+                      elif own:
+                          pin_copy = pin_copy or cm
+                  if dest_is_pin and own:
+                      pin_copy = pin_copy or cm
+              if pin_copy is None:
+                  fail("Dockerfile installs Rust via rustup but never copies rust-toolchain.toml into the image root; "
+                       "the build would run on rustup's unpinned default, not the channel")
+              elif build_m is None:
+                  fail("Dockerfile installs Rust via rustup but has no pip install build step for the project; "
+                       "the checker cannot verify the pin is in the image before the build")
+              elif pin_copy.start() > build_m.start():
+                  fail("Dockerfile copies rust-toolchain.toml after the pip install build step; "
+                       "the pin must be in the image before the build runs")
+              else:
+                  print("Dockerfile copies rust-toolchain.toml into the image before the build step")
+              # Rewrite scan: any non-comment line outside the COPY
+              # and ADD instructions (RUN steps and heredoc bodies)
+              # that writes onto the pin file, or onto the legacy
+              # rust-toolchain file, which rustup prefers over
+              # rust-toolchain.toml when both are present. Quotes are
+              # stripped first, so a quoted destination is seen
+              # plainly.
+              root_dirs = (".", "./", "./.", workdir, workdir + "/", workdir + "/.",
+                           "$PWD", "${PWD}", "$PWD/", "${PWD}/", "$PWD/.", "${PWD}/.")
+              wrappers = ("env", "command", "busybox", "sudo", "timeout", "nohup", "nice", "stdbuf", "setsid")
+              for line in flat.splitlines():
+                  stripped = line.strip()
+                  if not stripped or stripped.startswith("#"):
+                      continue
+                  if re.match(r"(?i)(COPY|ADD)\s", stripped):
+                      continue
+                  plain = line.replace('"', "").replace("'", "")
+                  if "rust-toolchain" not in plain:
+                      continue
+                  plain = re.sub(r"(?i)^\s*RUN\s+", "", plain)
+                  for target in ("rust-toolchain.toml", "rust-toolchain"):
+                      if target not in plain:
+                          continue
+                      tail = r"\b" if target.endswith(".toml") else r"(?![\w.])"
+                      rewritten = bool(re.search(r">\s*\S*" + re.escape(target) + tail, plain))
+                      if re.search(r"open\([^)]*,\s*[wa][bt+]?|\.write(?:_text|_bytes)?\(", plain) and \
+                              (target.endswith(".toml") or re.search(r"rust-toolchain(?![\w.])", plain)):
+                          rewritten = True
+                      for segment in re.split(r"&&|;|\|", plain):
+                          segment = segment.split(">", 1)[0].split("#", 1)[0]
+                          toks = [t.strip("()") for t in segment.split()]
+                          toks = [t for t in toks if t]
+                          # Skip assignment and wrapper prefixes and
+                          # any path qualification, so the verb seen is
+                          # the command that actually runs.
+                          seen_wrapper = False
+                          while toks and ("=" in toks[0] or re.fullmatch(r"\d+[a-z]?", toks[0])
+                                          or base(toks[0]) in wrappers
+                                          or (seen_wrapper and (toks[0].startswith("-")
+                                                                or (toks[0].isalpha() and toks[0].isupper())))):
+                              if base(toks[0]) in wrappers:
+                                  seen_wrapper = True
+                              toks = toks[1:]
+                          if not toks:
+                              continue
+                          verb, rest = base(toks[0]), toks[1:]
+                          plain_args = [t for t in rest if not t.startswith("-")]
+                          if verb in ("cp", "mv", "ln", "install", "rsync"):
+                              if len(plain_args) >= 2 and base(plain_args[-1]) == target:
+                                  rewritten = True
+                              if plain_args and plain_args[-1] in root_dirs and \
+                                      any(base(a) == target for a in plain_args[:-1]):
+                                  rewritten = True
+                              for i, t in enumerate(rest):
+                                  tdir = None
+                                  if t in ("-t", "--target-directory") and i + 1 < len(rest):
+                                      tdir = rest[i + 1]
+                                  elif t.startswith("--target-directory="):
+                                      tdir = t.split("=", 1)[1]
+                                  elif t.startswith("-t") and len(t) > 2:
+                                      tdir = t[2:]
+                                  if tdir in root_dirs and \
+                                          any(base(a) == target for a in plain_args):
+                                      rewritten = True
+                          elif verb == "tee":
+                              if any(base(t) == target for t in plain_args):
+                                  rewritten = True
+                          elif verb == "dd":
+                              if any(t.startswith("of=") and base(t[3:]) == target for t in rest):
+                                  rewritten = True
+                          elif verb in ("sed", "perl"):
+                              inplace = any(t.startswith("--in-place")
+                                            or (not t.startswith("--") and re.match(r"-[a-zA-Z]*i", t)) for t in rest)
+                              if inplace and any(base(t) == target for t in plain_args):
+                                  rewritten = True
+                          elif verb in ("curl", "wget"):
+                              if verb == "curl" and any(t.startswith("--remote-name")
+                                                        or re.fullmatch(r"-[a-zA-Z]*O[a-zA-Z]*", t) for t in rest) \
+                                      and any(base(t) == target for t in plain_args):
+                                  rewritten = True
+                              for i, t in enumerate(rest):
+                                  value = None
+                                  if t in ("-o", "-O", "--output", "--output-document") and i + 1 < len(rest):
+                                      value = rest[i + 1]
+                                  elif t.startswith("--output=") or t.startswith("--output-document="):
+                                      value = t.split("=", 1)[1]
+                                  elif re.fullmatch(r"-[a-zA-Z]*[oO]", t) and i + 1 < len(rest):
+                                      value = rest[i + 1]
+                                  else:
+                                      glued = re.fullmatch(r"-[a-zA-Z]*[oO]=(.*)", t) or \
+                                              re.fullmatch(r"-[a-zA-Z]*[oO](.+)", t)
+                                      if glued:
+                                          value = glued.group(1)
+                                  if value is not None and base(value) == target:
+                                      rewritten = True
+                      if rewritten:
+                          fail(f"Dockerfile rewrites {target} in a later step; "
+                               "the pin must be the repository's own file")
+                          break
+              if re.search(r"\.rustup/settings\.toml", flat):
+                  fail("Dockerfile mentions rustup's settings.toml, where directory overrides beat rust-toolchain.toml; "
+                       "rust-toolchain.toml must stay the single source")
+              if "RUSTUP_HOME" in flat and re.search(r"settings\.toml", flat):
+                  fail("Dockerfile relocates RUSTUP_HOME and mentions a settings.toml, where directory overrides beat rust-toolchain.toml; "
+                       "rust-toolchain.toml must stay the single source")
+              for dt in re.finditer(r"--default-toolchain[=\s]+(\S+)", flat):
+                  if dt.group(1) != "none":
+                      fail(f"Dockerfile's rustup install sets --default-toolchain {dt.group(1)}; "
+                           "rust-toolchain.toml must stay the single source")
+              rd = re.search(r"\brustup\s+default\s+(\S+)", flat)
+              if rd is not None and rd.group(1) != "none":
+                  fail(f"Dockerfile sets the rustup default toolchain to {rd.group(1)}; "
+                       "rust-toolchain.toml must stay the single source")
+              if re.search(r"\brustup\s+override\s+set\b", flat):
+                  fail("Dockerfile sets a rustup override, which beats rust-toolchain.toml; "
+                       "rust-toolchain.toml must stay the single source")
+              if re.search(r"\bRUSTUP_TOOLCHAIN\b", flat):
+                  fail("Dockerfile mentions RUSTUP_TOOLCHAIN, which overrides rust-toolchain.toml wherever it takes effect; "
+                       "rust-toolchain.toml must stay the single source")
+          if m is None and rustup_form is None:
+              fail("Dockerfile has neither a rust-builder stage nor a rustup install; "
+                   "no Rust toolchain pin can be verified")
 
           # dtolnay/rust-toolchain honors rust-toolchain.toml; a version
           # input here would silently fork the toolchain between CI jobs.
