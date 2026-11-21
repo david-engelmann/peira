@@ -648,7 +648,7 @@ function plotSvg(kind, placedLabels, subjectSeat, widthOverride) {
   const grid = ticks
     .map(
       (t) =>
-        `<line x1="${g.x0}" y1="${g.yOf(t)}" x2="${g.canvas.w}" y2="${g.yOf(t)}" stroke="#161d25" stroke-width="1"/>\n<text x="${g.tickX}" y="${g.yOf(t) + 4}" text-anchor="end" class="gtick">${Math.round(t * 100)}</text>`,
+        `<line x1="${g.x0}" y1="${g.yOf(t)}" x2="${g.canvas.w}" y2="${g.yOf(t)}" stroke="#1a232e" stroke-width="1"/>\n<text x="${g.tickX}" y="${g.yOf(t) + 4}" text-anchor="end" class="gtick">${Math.round(t * 100)}</text>`,
     )
     .join("\n");
   const decades = decadesFor(g)
@@ -662,7 +662,7 @@ function plotSvg(kind, placedLabels, subjectSeat, widthOverride) {
     const y = g.yOf(r.asr_conditional);
     if (r.run_id === subject.run_id) return "";
     if (!r.ranking_eligible) {
-      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${g.flagR}" fill="#0c1015" stroke="#e8a33d" stroke-width="2"/>`;
+      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${g.flagR}" fill="#0d1219" stroke="#e8a33d" stroke-width="2"/>`;
     }
     return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${g.discR}" fill="#aeb7c2" fill-opacity="0.45"/>`;
   };
@@ -817,8 +817,8 @@ const labelCandidates = plottedDrawn
  * stacks the design's mocks carry. */
 const CARD_CSS_BASE = `
   :root{
-    --ground:#05070a; --panel:#0c1015; --ink:${CARD_INK}; --body:#c3cad3;
-    --gray:#8d97a3; --faint:#5d6773; --hair:#1d242e; --hair2:#262f3a;
+    --ground:#070a0f; --panel:#0d1219; --ink:${CARD_INK}; --body:#c3cad3;
+    --gray:#8d97a3; --faint:#5d6773; --hair:#212b36; --hair2:#2c3844;
     --accent:#2fbf71; --amber:#e8a33d; --disc:#aeb7c2;
     --sans:"Liberation Sans","DejaVu Sans",Arial,sans-serif;
     --mono:"Liberation Mono","DejaVu Sans Mono",monospace;

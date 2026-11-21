@@ -8,8 +8,16 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ExplorerData, XRow } from "@/lib/explorerData";
+import type { ExplorerData, XCalArm, XRow } from "@/lib/explorerData";
+import {
+  dimensionLabels,
+  groupLabels,
+  profileDimensions,
+  profileValue,
+  type ProfileDimension,
+} from "@/lib/profileLabels";
 import Mark from "@/components/Mark";
+import ResultLink from "@/components/ResultLink";
 import {
   fmtDeltaPct,
   fmtDeltaUsd,
@@ -29,8 +37,9 @@ import {
 
 type Pop = "all" | "full" | "guards" | "flagged";
 type Mode = "rank" | "chart" | "families";
+type ProfileFilters = Record<ProfileDimension, string>;
 
-interface XState {
+interface XState extends ProfileFilters {
   pop: Pop;
   mode: Mode;
   sort: string;
@@ -50,13 +59,17 @@ interface Brush {
   asrHi: number;
 }
 
+const ALL_PROFILES: ProfileFilters = {
+  kind: "all",
+  interface: "all",
+  serving: "all",
+  weights: "all",
+  tier: "all",
+};
+
 const DEFAULTS: XState = {
-  pop: "all",
-  /* The chart is the default mode so the plot's subject
-   * composition, the selected result as the one white disc in
-   * a dimmed field, stands on first view rather than behind a
-   * mode switch. The ladder stands one switch away in Rank
-   * mode, and its full names ride the chart's sync list. */
+  ...ALL_PROFILES,
+  pop: "full",
   mode: "chart",
   sort: "asr",
   vendor: "all",
@@ -94,10 +107,71 @@ function decompLine(row: XRow): string | null {
   return `${fmtInt(d.flips)} counted flips · ${fmtInt(d.malformedFlips)} to malformed output · genuine flips ${fmtPct(d.genuineRate)} of ${fmtInt(row.nEligible)} eligible cases`;
 }
 
+export function CalArm({ arm, label }: { arm: XCalArm; label: string }) {
+  const figs: string[] = [];
+  if (arm.eceText !== null) figs.push(`ECE ${arm.eceText}`);
+  if (arm.brierText !== null) figs.push(`Brier ${arm.brierText}`);
+  if (figs.length === 0 && arm.bins.length === 0 &&
+      arm.coverageText === null && arm.murphyText === null) {
+    return null;
+  }
+  return (
+    <div className="drow">
+      <div className="drow-top">
+        <span className="drow-name">{label}</span>
+        {figs.length > 0 && <span className="drow-main">{figs.join(" · ")}</span>}
+      </div>
+      {arm.coverageText && <p className="drow-sub">{arm.coverageText}</p>}
+      {arm.murphyText && <p className="drow-sub">{arm.murphyText}</p>}
+      {arm.bins.length > 0 && (
+        <svg
+          className="calstrip"
+          viewBox="0 0 120 124"
+          role="img"
+          aria-label={`${label} reliability, forecast against outcome`}
+        >
+          <line
+            x1="10"
+            y1="110"
+            x2="110"
+            y2="10"
+            className="calstrip-diag"
+          />
+          {arm.bins.map((b, i) => (
+            <circle
+              key={i}
+              cx={10 + b.x * 100}
+              cy={110 - b.y * 100}
+              r={2.5}
+              className="calstrip-pt"
+            />
+          ))}
+          <text x="10" y="121" className="calstrip-tick">
+            0
+          </text>
+          <text x="104" y="121" className="calstrip-tick">
+            1
+          </text>
+        </svg>
+      )}
+    </div>
+  );
+}
+
 function ReadingBody({ row }: { row: XRow }) {
   const d = decompLine(row);
   return (
     <div className="reading-body">
+      <dl className="reading-profile">
+        {profileDimensions
+          .filter((dimension) => dimension !== "tier" || row.profile.frontier)
+          .map((dimension) => (
+            <div key={dimension}>
+              <dt className="micro">{dimensionLabels[dimension]}</dt>
+              <dd>{groupLabels[dimension][profileValue(row.profile, dimension)]}</dd>
+            </div>
+          ))}
+      </dl>
       <div className="reading-figs">
         <div>
           <span className="micro">{row.asrLabel}</span>
@@ -131,6 +205,12 @@ function ReadingBody({ row }: { row: XRow }) {
             <span className="rsub">Per attacked call</span>
           )}
         </div>
+        {row.taxText && (
+          <div>
+            <span className="micro">Robustness tax</span>
+            <strong>{row.taxText}</strong>
+          </div>
+        )}
       </div>
       {d && <p className="reading-line">{d}</p>}
       {row.weakestFamily && (
@@ -146,26 +226,91 @@ function ReadingBody({ row }: { row: XRow }) {
             : ""}
         </p>
       )}
-      {row.severities.length > 0 && (
-        <p className="reading-line">
-          {row.severities.map((s, i) => (
-            <span key={s.label}>
-              {i > 0 && " · "}
-              <span className="sevseg">
-                {`${s.label} ${s.flipText ?? "no rate"}${s.baseText ? ` over ${s.baseText}` : ""}`}
-              </span>
-            </span>
-          ))}
-        </p>
-      )}
       {row.flaggedReason && (
         <p className="reading-line flagged-line">{row.flaggedReason}</p>
       )}
       {row.sliceNote && <p className="reading-line">{row.sliceNote}</p>}
       {row.unanswered && <p className="reading-line">{row.unanswered}</p>}
       {row.singleCall && <p className="reading-line">{row.singleCall}</p>}
+      <ResultLink key={row.slug} href={row.href} />
       <p className="reading-prov">{row.provenanceLine}</p>
       {row.rerunText && <p className="reading-prov">{row.rerunText}</p>}
+      {row.record.families.length > 0 && (
+        <div className="rdata">
+          <p className="micro rdata-head">Attack families</p>
+          {row.record.families.map((f) => (
+            <div className="drow" key={f.key}>
+              <div className="drow-top">
+                <span className="drow-name">{f.full}</span>
+                <span className="drow-main">
+                  {f.asrText ?? "·"}
+                  {f.ciText ? (
+                    <span className="drow-ci"> {f.ciText}</span>
+                  ) : null}
+                </span>
+              </div>
+              {f.decompText && <p className="drow-sub">{f.decompText}</p>}
+              {f.countsText && <p className="drow-sub">{f.countsText}</p>}
+              {f.directionsText && (
+                <p className="drow-sub">{f.directionsText}</p>
+              )}
+              {f.metaText && <p className="drow-sub">{f.metaText}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+      {row.record.severities.length > 0 && (
+        <div className="rdata">
+          <p className="micro rdata-head">Severity</p>
+          {row.record.severities.map((s) => (
+            <div className="drow" key={s.label}>
+              <div className="drow-top">
+                <span className="drow-name">{s.label}</span>
+                <span className="drow-main">
+                  {s.flipText ?? "·"}
+                  {s.ciText ? (
+                    <span className="drow-ci"> {s.ciText}</span>
+                  ) : null}
+                </span>
+              </div>
+              {s.segments.length > 0 && (
+                <p className="drow-sub">
+                  {s.segments.map((seg, i) => (
+                    <span key={seg}>
+                      {i > 0 && " · "}
+                      <span className="sevseg">{seg}</span>
+                    </span>
+                  ))}
+                </p>
+              )}
+              {s.metaText && <p className="drow-sub">{s.metaText}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+      {row.record.calibration !== null && (
+        <div className="rdata">
+          <p className="micro rdata-head">Calibration</p>
+          <CalArm arm={row.record.calibration.benign} label="Benign" />
+          <CalArm arm={row.record.calibration.attacked} label="Attacked" />
+          {row.record.calibration.deltaText && (
+            <p className="drow-sub cal-delta">
+              {row.record.calibration.deltaText}
+            </p>
+          )}
+        </div>
+      )}
+      {row.record.runFacts.length > 0 && (
+        <div className="rdata">
+          <p className="micro rdata-head">Run record</p>
+          {row.record.runFacts.map((fact) => (
+            <div className="rrow" key={fact.label}>
+              <span>{fact.label}</span>
+              <strong>{fact.value}</strong>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -177,6 +322,10 @@ function deltaText(
 ): string {
   if (a === null || b === null) return "Not comparable";
   return fmt(b - a);
+}
+
+function sameCasePopulation(a: XRow, b: XRow) {
+  return a.nCases === b.nCases && (a.kind === "slice") === (b.kind === "slice");
 }
 
 function CompareReading({
@@ -221,7 +370,8 @@ function CompareReading({
        * run served locally and a run with no recorded cost are
        * not zero priced, so neither side may enter a
        * subtraction that would print one. */
-      sel.costValue !== null &&
+      sel.costKind === "amount" && pin.costKind === "amount" &&
+        sel.costValue !== null &&
         pin.costValue !== null &&
         sel.costValue > 0 &&
         pin.costValue > 0
@@ -246,7 +396,10 @@ function CompareReading({
           <ReadingBody row={sel} />
         </div>
         <div className="compare-deltas" aria-label="Differences">
-          {rows.map(([label, a, b, delta]) => (
+          {!sameCasePopulation(sel, pin) && (
+            <p>These runs used different case sets ({fmtInt(sel.nCases)} and {fmtInt(pin.nCases)} cases). Each column shows its own measurements.</p>
+          )}
+          {sameCasePopulation(sel, pin) && rows.map(([label, a, b, delta]) => (
             <div className="delta-row" key={label}>
               <span className="micro">{label}</span>
               <span className="delta-pair">
@@ -319,24 +472,22 @@ function sortRows(rows: XRow[], sort: string): XRow[] {
   });
 }
 
-export default function Explorer({ data }: { data: ExplorerData }) {
-  const byId = useMemo(
-    () => new Map(data.rows.map((r) => [r.runId, r])),
-    [data],
+function matchesPopulation(row: XRow, pop: Pop) {
+  return pop === "all" || row.kind === (pop === "guards" ? "slice" : pop);
+}
+
+function matchesProfile(row: XRow, filters: ProfileFilters) {
+  return profileDimensions.every((dimension) =>
+    filters[dimension] === "all" || filters[dimension] === profileValue(row.profile, dimension),
   );
+}
+
+export default function Explorer({ data }: { data: ExplorerData }) {
   const bySlug = useMemo(
     () => new Map(data.rows.map((r) => [r.slug, r])),
     [data],
   );
-  /* The opening selection is the chart's subject, the best
-   * ranked result the plot can seat. The plot seats its
-   * subject on the cost axis, so the predicate asks for the
-   * first full result carrying a metered cost, and a result
-   * with no metered cost stands in the chart's rail rather
-   * than on the plot. On the current payload the first
-   * priced full result is the board leader itself, the
-   * rank 1 Gemini run, so the leader takes the white disc
-   * until the reader selects another. */
+  // Start with the highest-ranked result with a metered cost.
   const opener = useMemo(
     () =>
       data.rows.find(
@@ -356,6 +507,9 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   const listRef = useRef<HTMLDivElement>(null);
   const flipSnapshot = useRef<Map<string, number> | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
+  const readingRef = useRef<HTMLDivElement>(null);
+  const readingOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const revealReading = useRef(false);
   const [explorerLive, setExplorerLive] = useState(false);
 
   /* The phone footstrip and the comparison tray seat
@@ -382,21 +536,33 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     const patch: Partial<XState> = {};
     let open = false;
     if (hash.startsWith("result=")) {
-      const row = bySlug.get(decodeURIComponent(hash.slice(7)));
+      let slug: string;
+      try {
+        slug = decodeURIComponent(hash.slice(7));
+      } catch {
+        return { patch, open };
+      }
+      const row = bySlug.get(slug);
       if (row) {
+        Object.assign(patch, DEFAULTS);
         patch.sel = row.runId;
         patch.pop =
           row.kind === "slice" ? "guards" : row.kind === "flagged" ? "flagged" : "full";
+        if (row.kind === "slice") patch.mode = "rank";
         open = true;
       }
       return { patch, open };
     }
     const qIndex = hash.indexOf("?");
-    if (qIndex < 0) return { patch, open };
+    if (qIndex < 0 || hash.slice(0, qIndex) !== "explorer") return { patch, open };
+    Object.assign(patch, DEFAULTS, { sel: opener?.runId ?? null });
     const params = new URLSearchParams(hash.slice(qIndex + 1));
     const pop = params.get("pop");
     if (pop === "all" || pop === "full" || pop === "guards" || pop === "flagged") {
       patch.pop = pop;
+    } else if (pop === null) {
+      // Links created when All results was the default omitted this key.
+      patch.pop = "all";
     }
     const mode = params.get("mode");
     if (mode === "rank" || mode === "chart" || mode === "families") {
@@ -408,10 +574,19 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     if (vendor) patch.vendor = vendor;
     const cost = params.get("cost");
     if (cost) patch.cost = cost;
+    for (const dimension of profileDimensions) {
+      const value = params.get(dimension);
+      if (value !== null && Object.hasOwn(groupLabels[dimension], value)) {
+        patch[dimension] = value;
+      }
+    }
     const q = params.get("q");
     if (q !== null) patch.q = q;
+    // A missing key keeps the legacy opener. An empty value clears it.
     const selSlug = params.get("sel");
-    if (selSlug) {
+    if (selSlug === "") {
+      patch.sel = null;
+    } else if (selSlug !== null) {
       const row = bySlug.get(selSlug);
       if (row) patch.sel = row.runId;
     }
@@ -427,44 +602,27 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     }
     open = params.get("open") === "1";
     return { patch, open };
-  }, [bySlug]);
+  }, [bySlug, opener]);
 
   useEffect(() => {
-    const apply = (scroll: boolean) => {
+    const apply = (initial: boolean) => {
       const { patch, open } = parseHash();
       if (Object.keys(patch).length === 0) return;
+      touched.current = false;
+      readingOpenerRef.current = null;
       setState((s) => ({ ...s, ...patch }));
-      if (open && patch.sel) setExpanded(patch.sel);
-      if (scroll) {
-        sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
+      setExpanded(open && patch.sel ? patch.sel : null);
+      setHoverId(null);
+      setChipId(null);
+      setBrush(null);
+      sectionRef.current?.focus({ preventScroll: true });
+      sectionRef.current?.scrollIntoView({ block: "start", behavior: initial ? "instant" : "auto" });
     };
-    apply(false);
-    const onHash = () => apply(true);
+    apply(true);
+    const onHash = () => apply(false);
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, [parseHash]);
-
-  useEffect(() => {
-    if (!touched.current) return;
-    const params = new URLSearchParams();
-    if (state.pop !== DEFAULTS.pop) params.set("pop", state.pop);
-    if (state.mode !== DEFAULTS.mode) params.set("mode", state.mode);
-    if (state.sort !== DEFAULTS.sort) params.set("sort", state.sort);
-    if (state.vendor !== "all") params.set("vendor", state.vendor);
-    if (state.cost !== "all") params.set("cost", state.cost);
-    if (state.q) params.set("q", state.q);
-    const selRow = state.sel ? byId.get(state.sel) : null;
-    if (selRow) params.set("sel", selRow.slug);
-    const pinRow = state.pin ? byId.get(state.pin) : null;
-    if (pinRow) params.set("pin", pinRow.slug);
-    if (state.frontier) params.set("frontier", "1");
-    const qs = params.toString();
-    const target = qs ? `#explorer?${qs}` : "#explorer";
-    if (window.location.hash !== target) {
-      window.history.replaceState(null, "", target);
-    }
-  }, [state, byId]);
 
   const snapshotFlip = useCallback(() => {
     const root = listRef.current;
@@ -508,13 +666,12 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     [snapshotFlip],
   );
 
-  const visible = useMemo(() => {
+  const filtered = useMemo(() => {
     const band = COST_BANDS.find((b) => b.key === state.cost) ?? COST_BANDS[0];
     const query = state.q.trim().toLowerCase();
     return data.rows.filter((row) => {
-      if (state.pop === "full" && row.kind !== "full") return false;
-      if (state.pop === "guards" && row.kind !== "slice") return false;
-      if (state.pop === "flagged" && row.kind !== "flagged") return false;
+      if (!matchesPopulation(row, state.pop)) return false;
+      if (!matchesProfile(row, state)) return false;
       if (state.vendor !== "all" && row.vendorKey !== state.vendor) return false;
       if (!band.test(row.costValue)) return false;
       if (
@@ -525,14 +682,17 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       ) {
         return false;
       }
-      if (brush) {
-        if (row.asr === null || row.costValue === null) return false;
-        if (row.costValue < brush.costLo || row.costValue > brush.costHi) return false;
-        if (row.asr < brush.asrLo || row.asr > brush.asrHi) return false;
-      }
       return true;
     });
-  }, [data, state, brush]);
+  }, [data, state]);
+
+  const visible = useMemo(() => {
+    if (brush === null) return filtered;
+    return filtered.filter((row) =>
+      row.asr !== null && row.asr >= brush.asrLo && row.asr <= brush.asrHi &&
+      row.costValue !== null && row.costValue >= brush.costLo && row.costValue <= brush.costHi,
+    );
+  }, [brush, filtered]);
 
   const groups = useMemo(() => {
     if (state.pop !== "all") return [{ kind: "one" as const, rows: sortRows(visible, state.sort) }];
@@ -543,9 +703,87 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     ].filter((g) => g.rows.length > 0);
   }, [visible, state]);
 
-  const selRow = state.sel ? byId.get(state.sel) ?? null : null;
-  const pinRow = state.pin ? byId.get(state.pin) ?? null : null;
-  const hiddenCount = data.rows.length - visible.length;
+  const chartSelection = filtered.find((row) => row.runId === state.sel) ?? null;
+  const urlPin = filtered.find((row) => row.runId === state.pin) ?? null;
+  const selRow = visible.find((row) => row.runId === state.sel) ?? null;
+  const pinRow = visible.find((row) => row.runId === state.pin) ?? null;
+  const expandedRow = visible.find((row) => row.runId === expanded) ?? null;
+  const populationCount = data.rows.filter((row) => matchesPopulation(row, state.pop)).length;
+  const activeProfileFilters = profileDimensions.filter((dimension) => state[dimension] !== "all");
+
+  useEffect(() => {
+    if ((state.sel !== null && chartSelection === null) || (state.pin !== null && urlPin === null)) {
+      setState((current) => current === state ? {
+        ...current,
+        sel: chartSelection?.runId ?? null,
+        pin: urlPin?.runId ?? null,
+      } : current);
+    }
+    if (expanded && !expandedRow) setExpanded(null);
+    if (hoverId && !visible.some((row) => row.runId === hoverId)) setHoverId(null);
+    if (chipId && !visible.some((row) => row.runId === chipId)) setChipId(null);
+  }, [state, chartSelection, urlPin, visible, expanded, expandedRow, hoverId, chipId]);
+
+  useEffect(() => {
+    if (!touched.current) return;
+    const params = new URLSearchParams();
+    params.set("pop", state.pop);
+    if (state.mode !== DEFAULTS.mode) params.set("mode", state.mode);
+    if (state.sort !== DEFAULTS.sort) params.set("sort", state.sort);
+    if (state.vendor !== "all") params.set("vendor", state.vendor);
+    if (state.cost !== "all") params.set("cost", state.cost);
+    for (const dimension of profileDimensions) {
+      if (state[dimension] !== "all") params.set(dimension, state[dimension]);
+    }
+    if (state.q) params.set("q", state.q);
+    params.set("sel", chartSelection?.slug ?? "");
+    if (urlPin) params.set("pin", urlPin.slug);
+    if (chartSelection && expandedRow?.runId === chartSelection.runId) params.set("open", "1");
+    if (state.frontier) params.set("frontier", "1");
+    if (state.grey !== DEFAULTS.grey) params.set("grey", state.grey);
+    const target = `#explorer?${params}`;
+    if (window.location.hash !== target) {
+      window.history.replaceState(null, "", target);
+    }
+  }, [state, chartSelection, urlPin, expandedRow]);
+
+  const openReading = (runId: string, opener: HTMLButtonElement) => {
+    touched.current = true;
+    if (state.mode === "chart") {
+      readingOpenerRef.current = opener;
+      if (expanded === runId) {
+        if (readingRef.current) {
+          readingRef.current.focus({ preventScroll: true });
+          readingRef.current.scrollIntoView({ block: "start" });
+        }
+      } else {
+        revealReading.current = true;
+      }
+    }
+    setExpanded(runId);
+  };
+
+  const closeChartReading = () => {
+    touched.current = true;
+    setExpanded(null);
+    const opener = readingOpenerRef.current;
+    readingOpenerRef.current = null;
+    const results = sectionRef.current?.querySelector(".chartsync");
+    const target = opener?.isConnected
+      ? opener
+      : results?.querySelector<HTMLButtonElement>(".sync-row.sel") ??
+        results?.querySelector<HTMLButtonElement>(".sync-row");
+    target?.focus();
+  };
+
+  useEffect(() => {
+    if (!revealReading.current) return;
+    revealReading.current = false;
+    if (readingRef.current) {
+      readingRef.current.focus({ preventScroll: true });
+      readingRef.current.scrollIntoView({ block: "start" });
+    }
+  }, [expanded]);
 
   const toggleExpand = (row: XRow) => {
     update({ sel: row.runId });
@@ -553,43 +791,21 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   };
 
   return (
-    <section className="explorer scene" id="explorer" ref={sectionRef} aria-label="Explorer">
+    <section className="explorer scene" id="explorer" tabIndex={-1} ref={sectionRef} aria-labelledby="explorer-title">
       <div className="sechead">
-        <div className="micro eyebrow">
-          <span className="eno">02</span> Explorer
-        </div>
-        <h2>Every result in full</h2>
+        <h2 id="explorer-title">Explore the results</h2>
         <p className="cap">
-          Ranking, readings, and comparison live here. Select a row to
-          open its reading in place.
+          Compare cost and attack success, inspect the rankings, or see how
+          models performed by attack family.
         </p>
       </div>
 
-      <div className="xcontrols">
-        <div className="segrow" role="group" aria-label="Population">
+      <div className="explorer-toolbar">
+        <div className="segrow explorer-views" role="group" aria-label="Display">
           {(
             [
-              ["all", "All results"],
-              ["full", "Full suite"],
-              ["guards", "Guards"],
-              ["flagged", "Flagged"],
-            ] as Array<[Pop, string]>
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              className={state.pop === key ? "segbtn on" : "segbtn"}
-              onClick={() => update({ pop: key }, true)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="segrow" role="group" aria-label="Mode">
-          {(
-            [
-              ["rank", "Rank"],
               ["chart", "Chart"],
+              ["rank", "Rankings"],
               ["families", "Families"],
             ] as Array<[Mode, string]>
           ).map(([key, label]) => (
@@ -597,12 +813,38 @@ export default function Explorer({ data }: { data: ExplorerData }) {
               key={key}
               type="button"
               className={state.mode === key ? "segbtn on" : "segbtn"}
+              aria-pressed={state.mode === key}
               onClick={() => update({ mode: key })}
             >
               {label}
             </button>
           ))}
         </div>
+        <p className="xcount" role="status">
+          {fmtInt(visible.length)} of {fmtInt(populationCount)} results
+          {brush ? " · area selected" : ""}
+        </p>
+      </div>
+
+      <div className="xcontrols">
+        <label className="xfield">
+          <span className="micro">Results</span>
+          <select
+            id="explorer-pop"
+            value={state.pop}
+            onChange={(e) => {
+              const pop = e.target.value as Pop;
+              setBrush(null);
+              setExpanded(null);
+              update({ pop, ...(pop === "guards" && state.mode === "chart" ? { mode: "rank" } : {}) }, true);
+            }}
+          >
+            <option value="full">Full suite</option>
+            <option value="guards">Guards</option>
+            <option value="flagged">Flagged</option>
+            <option value="all">All results</option>
+          </select>
+        </label>
         <label className="xfield">
           <span className="micro">Vendor</span>
           <select
@@ -635,14 +877,15 @@ export default function Explorer({ data }: { data: ExplorerData }) {
           <input
             type="search"
             value={state.q}
-            placeholder="Model or wire"
+            placeholder="Model name or wire"
             onChange={(e) => update({ q: e.target.value }, true)}
           />
         </label>
         <label className="xfield">
-          <span className="micro">Sort</span>
+          <span className="micro">Sort by</span>
           <select
-            value={state.sort.startsWith("fam:") ? state.sort : state.sort}
+            id="explorer-sort"
+            value={state.sort}
             onChange={(e) => update({ sort: e.target.value }, true)}
           >
             <option value="asr">Attack success</option>
@@ -665,7 +908,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
                 checked={state.frontier}
                 onChange={(e) => update({ frontier: e.target.checked })}
               />
-              <span>Frontier</span>
+              <span>Cost frontier</span>
             </label>
             <label className="xfield">
               <span className="micro">Highlight</span>
@@ -683,28 +926,53 @@ export default function Explorer({ data }: { data: ExplorerData }) {
             </label>
           </>
         )}
+        <details className="model-filters">
+          <summary>
+            Model filters
+            {activeProfileFilters.map((dimension) => (
+              <span className="model-filter-value" key={dimension}>
+                {` · ${groupLabels[dimension][state[dimension]]}`}
+              </span>
+            ))}
+          </summary>
+          <div className="model-filter-fields">
+            {profileDimensions.map((dimension) => (
+              <label className="xfield" key={dimension}>
+                <span className="micro">{dimensionLabels[dimension]}</span>
+                <select
+                  id={`explorer-${dimension}`}
+                  value={state[dimension]}
+                  onChange={(e) => update({ [dimension]: e.target.value }, true)}
+                >
+                  <option value="all">Any</option>
+                  {Object.entries(groupLabels[dimension]).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            {activeProfileFilters.length > 0 && (
+              <button type="button" className="ghostbtn" onClick={() => update(ALL_PROFILES, true)}>
+                Clear model filters
+              </button>
+            )}
+          </div>
+        </details>
       </div>
 
       {state.pop === "guards" && (
         <p className="basisline">
-          Guard results ran the {fmtInt(data.guardCases)} case abstain
-          subset of the suite. They are ranked among themselves on that
-          basis, and their rates do not compare with full suite rates.
+          Guards ran on the {fmtInt(data.guardCases)} abstain cases and have
+          a separate ranking.
         </p>
       )}
-      <p className="xcount">
-        Showing {fmtInt(visible.length)} of {fmtInt(data.rows.length)}{" "}
-        results
-        {hiddenCount > 0 ? ` · ${fmtInt(hiddenCount)} hidden by filters` : ""}
-        {brush ? " · brush filter on" : ""}
-      </p>
       {brush && (
         <button
           type="button"
-          className="ghostbtn"
+          className="ghostbtn brush-clear"
           onClick={() => setBrush(null)}
         >
-          Clear the brush filter
+          Clear area selection
         </button>
       )}
 
@@ -722,19 +990,23 @@ export default function Explorer({ data }: { data: ExplorerData }) {
           onUnpin={() => update({ pin: null })}
         />
       )}
-      {state.mode === "chart" && (
+      {state.mode === "chart" && visible.length > 0 && visible.every((row) => row.kind === "slice") ? (
+        <p className="xempty">
+          Guard results are shown in Rankings and Families.
+        </p>
+      ) : state.mode === "chart" && (
         <ChartView
           data={data}
           visible={visible}
           state={state}
-          selRow={selRow}
+          selRow={chartSelection}
           hoverId={hoverId}
           setHoverId={setHoverId}
           chipId={chipId}
           setChipId={setChipId}
-          onSelect={(row) => {
+          onSelect={(row, opener) => {
             update({ sel: row.runId });
-            setExpanded(row.runId);
+            if (opener) openReading(row.runId, opener);
           }}
           onBrush={(b) => setBrush(b)}
         />
@@ -747,8 +1019,8 @@ export default function Explorer({ data }: { data: ExplorerData }) {
           onToggle={toggleExpand}
         />
       )}
-      {state.mode !== "rank" && expanded && byId.get(expanded) && (
-        <div className="belowreading">
+      {state.mode === "chart" && expandedRow && (
+        <div className="belowreading" ref={readingRef} tabIndex={-1} aria-label={expandedRow.fullName}>
           {pinRow && selRow && expanded === selRow.runId ? (
             <CompareReading
               sel={selRow}
@@ -757,7 +1029,13 @@ export default function Explorer({ data }: { data: ExplorerData }) {
             />
           ) : (
             <div className="reading open">
-              <ReadingBody row={byId.get(expanded) as XRow} />
+              <div className="chart-reading-head">
+                <h3>{expandedRow.fullName}{expandedRow.wire && ` · ${expandedRow.wire}`}</h3>
+                <button type="button" className="ghostbtn" onClick={closeChartReading}>
+                  Close details
+                </button>
+              </div>
+              <ReadingBody row={expandedRow} />
             </div>
           )}
         </div>
@@ -773,14 +1051,17 @@ export default function Explorer({ data }: { data: ExplorerData }) {
             {selRow.name} against {pinRow.name}
           </span>
           <span className="tray-delta">
-            {selRow.asr !== null && pinRow.asr !== null
+            {sameCasePopulation(selRow, pinRow) && selRow.asr !== null && pinRow.asr !== null
               ? `${fmtDeltaPct(pinRow.asr - selRow.asr)} attack success`
               : "Rates not comparable"}
           </span>
           <button
             type="button"
             className="segbtn on"
-            onClick={() => setExpanded(selRow.runId)}
+            onClick={(e) => {
+              if (state.mode === "families") update({ mode: "rank" });
+              openReading(selRow.runId, e.currentTarget);
+            }}
           >
             Open comparison
           </button>
@@ -806,7 +1087,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
             <button
               type="button"
               className="ghostbtn"
-              onClick={() => setExpanded(selRow.runId)}
+              onClick={(e) => openReading(selRow.runId, e.currentTarget)}
             >
               Reading
             </button>
@@ -879,11 +1160,11 @@ function RankView({
           )}
           {group.kind === "flagged" && (
             <p className="xdivider flagged">
-              Flagged results · held off the ranking · their
-              intervals stand on the shared axis
+              Flagged results are excluded from the rankings. Their intervals
+              use the shared axis.
             </p>
           )}
-          {group.rows.map((row, i) => {
+          {group.rows.map((row) => {
             const isOpen = expanded === row.runId;
             return (
               <div
@@ -908,7 +1189,7 @@ function RankView({
                     className="xrank rn"
                     aria-label={row.kind === "flagged" ? "Not ranked" : undefined}
                   >
-                    {row.kind === "flagged" ? "" : i + 1}
+                    {row.popRank ?? ""}
                   </span>
                   <Mark mark={row.mark} />
                   <span className="xname">
@@ -988,8 +1269,7 @@ function RankView({
       ))}
       {groups.every((g) => g.rows.length === 0) && (
         <p className="xempty">
-          No result matches these filters. Loosen one and the board
-          comes back.
+          No results match these filters.
         </p>
       )}
     </div>
@@ -1005,7 +1285,7 @@ interface ChartViewProps {
   setHoverId: (id: string | null) => void;
   chipId: string | null;
   setChipId: (id: string | null) => void;
-  onSelect: (row: XRow) => void;
+  onSelect: (row: XRow, opener?: HTMLButtonElement) => void;
   onBrush: (b: Brush) => void;
 }
 
@@ -1114,18 +1394,20 @@ function ChartView({
     return () => window.removeEventListener("keydown", onKey);
   }, [cardUp, dismissChip]);
 
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
-    ro.observe(el);
-    setWidth(el.clientWidth);
-    return () => ro.disconnect();
-  }, []);
-
   const plotted = visible.filter((r) => r.kind !== "slice");
   const points = plotted.filter((r) => r.costValue !== null && r.costValue > 0);
   const rail = plotted.filter((r) => r.costValue === null || r.costValue === 0);
+  const chartVisible = points.length > 0 || rail.length > 0;
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const measure = () => setWidth(el.clientWidth);
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    measure();
+    return () => ro.disconnect();
+  }, [chartVisible]);
+
   /* The plot's own ceiling, derived from the results that
    * seat on it: the highest rate among the ranked results
    * that stand as points, a recorded cost above zero,
@@ -1164,7 +1446,7 @@ function ChartView({
   })();
 
   const H = 430;
-  const W = Math.max(320, width);
+  const W = Math.max(268, width);
   const padL = 44;
   /* The right pad carries the widest axis label whole. At
    * the old pad the final tick's label centred on the plot
@@ -1173,8 +1455,17 @@ function ChartView({
   const padT = 18;
   const padB = 40;
   const costs = points.map((r) => r.costValue as number);
-  const lo = Math.pow(10, Math.floor(Math.log10(Math.min(...costs)) * 2) / 2);
-  const hi = Math.pow(10, Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2);
+  const lo = costs.length ? Math.pow(10, Math.floor(Math.log10(Math.min(...costs)) * 2) / 2) : 1;
+  const hi = Math.max(
+    lo * Math.sqrt(10),
+    costs.length ? Math.pow(10, Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2) : 10,
+  );
+
+  // The captured starting point belongs to the old plot after a resize.
+  useLayoutEffect(() => {
+    setDrag(null);
+  }, [width, lo, hi, axisMax]);
+
   const x = (c: number) =>
     padL + ((Math.log10(c) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo))) * (W - padL - padR);
   const y = (a: number) => padT + (1 - a / axisMax) * (H - padT - padB);
@@ -1221,7 +1512,12 @@ function ChartView({
   for (let k = Math.floor(Math.log10(lo)); k <= Math.ceil(Math.log10(hi)); k += 1) {
     for (const m of [1, 3]) {
       const v = m * Math.pow(10, k);
-      if (v >= lo && v <= hi) xTicks.push({ v, label: fmtUsd(v) });
+      if (v >= lo && v <= hi) {
+        const previous = xTicks.at(-1);
+        if (!previous || x(v) - x(previous.v) >= 44) {
+          xTicks.push({ v, label: fmtUsd(v) });
+        }
+      }
     }
   }
 
@@ -1235,7 +1531,7 @@ function ChartView({
   const frontierPts = state.frontier
     ? (() => {
         const sorted = [...points]
-          .filter((r) => r.asr !== null)
+          .filter((r) => r.asr !== null && r.asr <= axisMax)
           .sort((a, b) => (a.costValue as number) - (b.costValue as number));
         const kept: XRow[] = [];
         let min = Infinity;
@@ -1249,7 +1545,7 @@ function ChartView({
       })()
     : [];
 
-  const offScale = plotted.filter((r) => r.asr !== null && r.asr > axisMax);
+  const offScale = points.filter((r) => r.asr !== null && r.asr > axisMax);
   const chipRow = chipId
     ? points.find((r) => r.runId === chipId) ?? null
     : hoverId
@@ -1269,22 +1565,22 @@ function ChartView({
     const name = selRow.fullName;
     const subj = subjectRow.fullName;
     if (!visible.some((r) => r.runId === selRow.runId)) {
-      return `${name} is hidden by the current filters. The white disc singles out ${subj}, the best result standing on the plot.`;
+      return `${name} is hidden by the current filters. The chart highlights ${subj}.`;
     }
     if (selRow.kind === "slice") {
-      return `${name} is a guard result, and guard results read in the rank and families modes. The white disc singles out ${subj}.`;
+      return `${name} ran on the guard subset. See Rankings or Families for its results.`;
     }
-    if (selRow.asr !== null && selRow.asr > axisMax) {
-      return `${name} plots above the shared axis at ${selRow.asrText} counted, so it carries no disc. The white disc singles out ${subj}.`;
+    if (selRow.costValue !== null && selRow.costValue > 0 && selRow.asr !== null && selRow.asr > axisMax) {
+      return `${name} is above the plotted range at ${selRow.asrText} counted attack success.`;
     }
     if (selRow.costKind === "local") {
-      return `${name} was served locally and stands in the rail below. The white disc singles out ${subj}.`;
+      return `${name} ran locally and is listed below under No API cost.`;
     }
     if (selRow.costValue === null) {
-      return `${name} has no recorded cost and stands in the rail below. The white disc singles out ${subj}.`;
+      return `${name} appears below under No recorded cost.`;
     }
     if (selRow.asr === null) {
-      return `${name} carries no attack success rate to plot. The white disc singles out ${subj}.`;
+      return `${name} has no attack success rate to plot.`;
     }
     return null;
   })();
@@ -1301,6 +1597,9 @@ function ChartView({
   const subjectCx = subjectRow ? x(subjectRow.costValue as number) : 0;
   const subjectCy = subjectRow ? y(subjectRow.asr as number) : 0;
   const subjectLabelBelow = subjectCy < 72;
+  const labelShift = plate
+    ? Math.max(6 - plate.x, Math.min(0, W - 6 - plate.x - plate.w))
+    : 0;
 
   /* The detail card seats by measured clearance on all
    * four sides of its disc. The rendered card, the label
@@ -1548,17 +1847,20 @@ function ChartView({
 
   return visible.length > 0 && plotted.length === 0 ? (
     <p className="xempty">
-      The chart plots full suite and flagged results. Guard results
-      read in the rank and families modes, on their own basis.
+      Guard results use a separate set of cases. Open Rankings or Families to
+      see those results.
     </p>
   ) : points.length === 0 && rail.length === 0 ? (
     <p className="xempty">
-      No priced result matches these filters, so the chart has
-      nothing to plot.
+      No results match these filters.
     </p>
   ) : (
     <div className="chartlayout">
       <div className="chartwrap" ref={wrapRef}>
+        <div className="chart-heading">
+          <h3>Cost and attack success</h3>
+          <p>Each point is a run with a recorded API cost.</p>
+        </div>
         <svg
           ref={svgRef}
           className="chart"
@@ -1574,7 +1876,9 @@ function ChartView({
             width={W - padL - padR}
             height={H - padT - padB}
             onPointerDown={(e) => {
+              if (e.button !== 0 || e.pointerType === "touch") return;
               const { px, py } = localPoint(e);
+              e.currentTarget.setPointerCapture(e.pointerId);
               setDrag({ x0: px, y0: py, x1: px, y1: py });
             }}
             onPointerMove={(e) => {
@@ -1582,22 +1886,26 @@ function ChartView({
               const { px, py } = localPoint(e);
               setDrag({ ...drag, x1: px, y1: py });
             }}
-            onPointerUp={() => {
+            onPointerUp={(e) => {
               if (!drag) return;
-              const w = Math.abs(drag.x1 - drag.x0);
-              const h = Math.abs(drag.y1 - drag.y0);
+              const { px, py } = localPoint(e);
+              const x1 = Math.max(padL, Math.min(W - padR, px));
+              const y1 = Math.max(padT, Math.min(H - padB, py));
+              const w = Math.abs(x1 - drag.x0);
+              const h = Math.abs(y1 - drag.y0);
               if (w > 14 && h > 14) {
                 onBrush({
-                  costLo: invX(Math.min(drag.x0, drag.x1)),
-                  costHi: invX(Math.max(drag.x0, drag.x1)),
-                  asrLo: Math.max(0, invY(Math.max(drag.y0, drag.y1))),
-                  asrHi: invY(Math.min(drag.y0, drag.y1)),
+                  costLo: invX(Math.min(drag.x0, x1)),
+                  costHi: invX(Math.max(drag.x0, x1)),
+                  asrLo: Math.max(0, invY(Math.max(drag.y0, y1))),
+                  asrHi: invY(Math.min(drag.y0, y1)),
                 });
               } else {
                 setChipId(null);
               }
               setDrag(null);
             }}
+            onPointerCancel={() => setDrag(null)}
           />
           {yTicks.map((t) => (
             <g key={t}>
@@ -1651,7 +1959,7 @@ function ChartView({
             return (
               <g
                 key={row.runId}
-                className={`disc${on ? "" : " greyed"}${subject ? " subject" : " field"}${active && !subject ? " active" : ""}`}
+                className={`disc${on ? "" : " greyed"}${subject ? " subject" : " field"}${active && !subject ? " active" : ""}${row.kind === "flagged" ? " flagged" : ""}`}
                 data-disc={row.runId}
                 tabIndex={0}
                 role="button"
@@ -1697,17 +2005,6 @@ function ChartView({
                   cx={cx}
                   cy={cy}
                   r={subject ? 17 : 15}
-                  fill={subject ? "#ffffff" : "#4a5763"}
-                  stroke={
-                    row.kind === "flagged"
-                      ? "#e8a33d"
-                      : subject
-                        ? "none"
-                        : "#05070a"
-                  }
-                  strokeWidth={
-                    row.kind === "flagged" ? (subject ? 2 : 1.5) : 1.5
-                  }
                 />
                 {row.mark.kind === "logo" && row.mark.slug ? (
                   <use
@@ -1716,7 +2013,6 @@ function ChartView({
                     y={cy - 9.5}
                     width={19}
                     height={19}
-                    style={{ color: subject ? "var(--glyph-dark)" : "#eef2f6" }}
                   />
                 ) : (
                   <text
@@ -1741,7 +2037,7 @@ function ChartView({
             />
           )}
           {subjectRow && !drag && (
-            <g className="subject-label">
+            <g className="subject-label" transform={`translate(${labelShift} 0)`}>
               {plate && (
                 <rect
                   className="label-plate"
@@ -1777,7 +2073,7 @@ function ChartView({
         {state.frontier && frontierPts.length > 1 && (
           <p className="chart-legend">
             <span className="legend-swatch" aria-hidden="true" />
-            Frontier, the lowest attack success at each cost
+            Cost frontier · Lowest attack success for a given cost or less
           </p>
         )}
         {offScale.length > 0 && (
@@ -1840,9 +2136,9 @@ function ChartView({
               <button
                 type="button"
                 className="segbtn on"
-                onClick={() => onSelect(chipRow)}
+                onClick={(e) => onSelect(chipRow, e.currentTarget)}
               >
-                Open reading
+                Open details
               </button>
               {/* The close control stands in the hover state
                * and the pinned state alike, as the card's
@@ -1871,13 +2167,13 @@ function ChartView({
               {
                 key: "local",
                 head: "No API cost",
-                note: "These results were served locally and carry no API cost, so they stand off the axis rather than at zero.",
+                note: "These runs used local inference and sit outside the cost axis.",
                 rows: rail.filter((r) => r.costKind === "local"),
               },
               {
                 key: "nocost",
                 head: "No recorded cost",
-                note: "These results carry no recorded serving cost, so they stand off the axis rather than at zero.",
+                note: "These runs sit outside the cost axis.",
                 rows: rail.filter((r) => r.costValue === null),
               },
             ]
@@ -1892,7 +2188,7 @@ function ChartView({
                         type="button"
                         className={`rail-row${state.sel === row.runId ? " sel" : ""}`}
                         onPointerEnter={() => setHoverId(row.runId)}
-                        onClick={() => onSelect(row)}
+                        onClick={(e) => onSelect(row, e.currentTarget)}
                       >
                         <Mark mark={row.mark} size={18} />
                         <span>{row.fullName}</span>
@@ -1907,21 +2203,28 @@ function ChartView({
         )}
       </div>
       <div className="chartsync">
-        <p className="micro">On the chart</p>
+        <div className="chartsync-heading">
+          <h3>Results</h3>
+          <span className="micro">Attack success</span>
+        </div>
         <ul>
-          {sortRows(plotted, "asr").map((row) => (
+          {sortRows(plotted, state.sort).map((row) => (
             <li key={row.runId}>
               <button
                 type="button"
                 className={`sync-row${hoverId === row.runId ? " hot" : ""}${state.sel === row.runId ? " sel" : ""}`}
+                aria-pressed={state.sel === row.runId}
                 onPointerEnter={() => setHoverId(row.runId)}
                 onPointerLeave={() => setHoverId(null)}
-                onClick={() => onSelect(row)}
+                onClick={(e) => onSelect(row, e.currentTarget)}
               >
                 <Mark mark={row.mark} size={18} />
                 <span className="sync-name">
                   <BreakName name={row.fullName} />
                   {row.wire ? ` · ${row.wire}` : ""}
+                  {row.kind === "flagged" && (
+                    <span className="xstate">Flagged · not ranked</span>
+                  )}
                 </span>
                 <span className="rn">{row.asrText ?? "·"}</span>
               </button>
@@ -1978,8 +2281,8 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
       </div>
       {groups.map((group) => (
         <div key={group.kind} className="xgroup">
-          {group.rows.map((row, i) => (
-            <div key={row.runId} className={`xfamrow ${row.kind}`}>
+          {group.rows.map((row) => (
+            <div key={row.runId} data-rid={row.runId} className={`xfamrow ${row.kind}`}>
               <div
                 className="xfam-head"
                 role="button"
@@ -1997,7 +2300,7 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
                   className="xrank rn"
                   aria-label={row.kind === "flagged" ? "Not ranked" : undefined}
                 >
-                  {row.kind === "flagged" ? "" : i + 1}
+                  {row.popRank ?? ""}
                 </span>
                 <Mark mark={row.mark} size={22} />
                 <span className="xname">
@@ -2039,6 +2342,9 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
           ))}
         </div>
       ))}
+      {groups.every((group) => group.rows.length === 0) && (
+        <p className="xempty">No results match these filters.</p>
+      )}
     </div>
   );
 }

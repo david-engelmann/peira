@@ -356,7 +356,7 @@ if (
 const gridTicks = [axisMax, axisMax / 2, 0];
 const gridB = gridTicks
   .map(
-    (t) => `<line x1="${BX.x0}" y1="${byOf(t)}" x2="${BX.x1}" y2="${byOf(t)}" stroke="#232c35" stroke-opacity="0.55"/>
+    (t) => `<line x1="${BX.x0}" y1="${byOf(t)}" x2="${BX.x1}" y2="${byOf(t)}" stroke="#27333f" stroke-opacity="0.55"/>
     <text x="${BX.x0 - 14}" y="${byOf(t) + 5}" class="tick" text-anchor="end">${Math.round(t * 100)}</text>`,
   )
   .join("\n");
@@ -437,9 +437,9 @@ const costLine = (r) =>
 const pointWords = (r) =>
   `${pointName(r)} (${fmtPct(r.asr_conditional)}, ${costIsLowerBound(r) ? "at least " : ""}${costFigure(r)} per run)`;
 const bSvg = `<svg width="1280" height="640" viewBox="0 0 1280 640" class="chart">
-  <rect x="48" y="196" width="1184" height="376" fill="#0c1015" stroke="#232c35"/>
+  <rect x="48" y="196" width="1184" height="376" fill="#0d1219" stroke="#27333f"/>
   ${gridB}
-  <line x1="${BX.x0}" y1="${BX.yBot}" x2="${BX.x1}" y2="${BX.yBot}" stroke="#232c35"/>
+  <line x1="${BX.x0}" y1="${BX.yBot}" x2="${BX.x1}" y2="${BX.yBot}" stroke="#27333f"/>
   ${decadesB}
   <text x="${BX.x0 + 6}" y="226" class="tick">Attack success, percent</text>
   <text x="${BX.x0}" y="560" class="tick">Recorded cost per run, US dollars, log scale</text>
@@ -479,7 +479,7 @@ const html = `<!doctype html>
 <html><head><meta charset="utf-8"><style>
 @font-face { font-family: "Archivo"; src: url("data:font/woff2;base64,${fontB64}") format("woff2"); }
 * { margin: 0; box-sizing: border-box; }
-body { width: 1280px; height: 640px; background: #05070a; color: #eef2f6;
+body { width: 1280px; height: 640px; background: #070a0f; color: #eef2f6;
   font-family: "Archivo", system-ui, sans-serif; overflow: hidden; }
 .word { font-size: 26px; font-weight: 700; letter-spacing: 0.34em; color: ${CARD_INK}; }
 .mast { display: flex; align-items: baseline; justify-content: space-between; }

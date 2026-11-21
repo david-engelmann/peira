@@ -9,28 +9,23 @@
  *   a row expands in place into its reading, with the
  *     calibration plot rendered for a result that carries one
  *   pinning two readings raises the compare tray, whose
- *     comparison carries the four derived deltas, each
- *     signed in words
+ *     comparison carries the five derived deltas
  *   sorting and the population filter restate the view, the
  *     guard population with its basis line
  *   chart hover lights the same result in the list beside
  *     the chart, and a brush drag filters the view and says
  *     so in the count line
  *   a model address (/#result=<slug>) opens that reading
+ *   model filters intersect, keep standing ranks, and remove hidden readings
  *   a finding's action sets the explorer state it promises
  *   finding actions followed in sequence each land where
  *     they promise, with unnamed state back at its default
  *   the rank header's labels stand over their columns
- *   families mode sorts by a family from its label, and
+ *   families mode sorts by a family from the Sort by control, and
  *     carries exactly one reading for an expanded row
- *   filtering in chart mode fades entering discs, rail rows,
- *     and sync rows at 200ms
- *   the five state changes of BUILD-SPEC part 6 animate at
- *     200ms, and reduced motion takes the designed M19
- *     branch, travel gone, height instant, and color kept
+ *   rankings re-sort with a FLIP transition and honor reduced motion
  *   at phone size the reading opens as a sheet over a sticky
- *     strip that names the selection, the tray pins above
- *     the strip, and a tap outside dismisses the sheet
+ *     strip that names the selection and has a close control
  *
  * Run after next build, standalone.
  *   node scripts/audit-dom.mjs
@@ -82,12 +77,6 @@ function modelSlug(row) {
   return clash ? `${withWire}-${slugify(row.run_id).slice(0, 8)}` : withWire;
 }
 const leader = full[0];
-const dupName = (() => {
-  const counts = new Map();
-  for (const r of full) counts.set(r.display_name, (counts.get(r.display_name) ?? 0) + 1);
-  return [...counts.entries()].find(([, c]) => c > 1)?.[0];
-})();
-
 /* ---------- server and browser (as in render-law) ---------- */
 
 const MIME = {
@@ -190,25 +179,101 @@ for (const width of [360, 480, 768, 1024, 1280, 1600]) {
   await page.setViewport({ width, height: 900 });
   await page.goto(`${base}/`, { waitUntil: "networkidle0" });
   const state = await page.evaluate(() => ({
-    findings: document.querySelectorAll(".finding").length,
+    findings: document.querySelectorAll("#findings a[href^='#explorer?']").length,
     overflow: document.documentElement.scrollWidth - window.innerWidth,
     explorer: document.querySelector(".explorer") !== null,
     method: document.querySelector("#method") !== null,
   }));
   if (errors.length > 0) fail(`at ${width}px: page error ${errors[0]}`);
-  if (state.findings !== 5) fail(`at ${width}px: ${state.findings} findings blocks, not 5`);
+  if (state.findings !== 2) fail(`at ${width}px: ${state.findings} analysis links, expected 2`);
   if (!state.explorer || !state.method) fail(`at ${width}px: explorer or Method missing`);
   if (state.overflow > 1) fail(`at ${width}px: horizontal overflow of ${state.overflow}px`);
   await page.close();
 }
-pass("six widths render five findings, the explorer and Method, with no overflow");
+pass("six widths render both analyses, the explorer and Method, with no overflow");
+
+/* The chart and its linked selections must agree on their population and median. */
+const cohortPage = await browser.newPage();
+await cohortPage.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
+await cohortPage.goto(base + "/#explorer?pop=full&mode=rank&kind=general", { waitUntil: "networkidle0" });
+const initialExplorerTop = await cohortPage.$eval("#explorer", el => el.getBoundingClientRect().top);
+const explorerFocused = await cohortPage.evaluate(() => document.activeElement?.id === "explorer");
+if (!explorerFocused || initialExplorerTop < 0 || initialExplorerTop > 150) fail("a shared Explorer view opened outside the viewport");
+else pass("a fresh filtered link lands at the Explorer");
+
+const fullRates = new Map(full.filter(r => r.asr_conditional != null).map(r => [r.run_id, r.asr_conditional]));
+for (const dimension of ["kind", "interface", "serving", "weights", "tier"]) {
+  await cohortPage.select("#model-groups select", dimension);
+  const chartRows = await cohortPage.$$eval(".group-row", elements => elements.map(el => ({
+    link: el.querySelector("a").getAttribute("href"),
+    ticks: el.querySelectorAll(".group-track i").length,
+    median: parseFloat(el.querySelector(".group-median").textContent),
+  })));
+  const seen = new Set();
+  for (const { link, ticks, median } of chartRows) {
+    await cohortPage.$eval(`.group-name a[href="${link}"]`, anchor => anchor.click());
+    await cohortPage.waitForFunction(n => document.querySelectorAll(".xlist [data-rid]").length === n, {}, ticks);
+    const ids = await cohortPage.$$eval(".xlist [data-rid]", els => els.map(el => el.dataset.rid));
+    const rates = ids.map(id => fullRates.get(id)).sort((a, b) => a - b);
+    if (rates.some(rate => rate == null) || ids.some(id => seen.has(id))) fail(`Unexpected cohort membership for ${link}`);
+    ids.forEach(id => seen.add(id));
+    const middle = (rates[Math.floor((rates.length - 1) / 2)] + rates[Math.floor(rates.length / 2)]) / 2;
+    if (!Number.isFinite(median) || !Number.isFinite(middle) || Math.abs(100 * middle - median) > 0.05001) fail(`Incorrect median for ${link}`);
+  }
+  if (seen.size !== fullRates.size) fail(`Incomplete full-suite coverage for ${dimension}`);
+}
+await cohortPage.close();
+pass("all five group comparisons link to the full-suite results used in each median");
 
 /* ---------- desktop interactions ---------- */
 
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 950 });
 await page.goto(`${base}/`, { waitUntil: "networkidle0" });
-await page.evaluate(() => document.querySelector(".explorer")?.scrollIntoView());
+await page.evaluate(() => document.querySelector(".explorer")?.scrollIntoView({ behavior: "instant" }));
+
+const rankedDefault = await page.evaluate(() => ({
+  pop: document.querySelector("#explorer-pop")?.value,
+  chart: Boolean(document.querySelector("svg.chart")),
+  flagged: document.querySelectorAll(".disc.flagged, .sync-row .xstate").length,
+  offScale: document.querySelectorAll(".offscale-note p").length,
+  count: document.querySelector(".xcount")?.textContent ?? "",
+}));
+if (rankedDefault.pop !== "full" || !rankedDefault.chart || rankedDefault.flagged ||
+    !rankedDefault.count.includes(`${full.length} of ${full.length} results`)) {
+  fail(`the Explorer does not open with the full-suite chart: ${JSON.stringify(rankedDefault)}`);
+} else pass("the Explorer opens with the full-suite chart");
+
+const pricedFull = full.filter(r => r.total_cost_usd > 0);
+if (pricedFull.length && rankedDefault.offScale !== 0) {
+  fail("the opening chart labels a result outside the priced full-suite axis");
+}
+
+const setMode = async (targetPage, label) => {
+  await targetPage.evaluate((text) => {
+    [...document.querySelectorAll(".explorer-views button")]
+      .find((button) => button.textContent.trim() === text)?.click();
+  }, label);
+  await waitFor(targetPage, (text) =>
+    document.querySelector('.explorer-views button[aria-pressed="true"]')?.textContent.trim() === text, label);
+};
+const setPopulation = (targetPage, pop) => targetPage.select("#explorer-pop", pop);
+
+const chartReadingOpener = await page.$(".sync-row.sel");
+await chartReadingOpener.focus();
+await page.keyboard.press("Enter");
+await waitFor(page, () => document.activeElement?.classList.contains("belowreading"));
+if (!(await page.evaluate(() => document.activeElement?.classList.contains("belowreading")))) {
+  fail("keyboard activation did not focus the chart reading");
+}
+await page.focus(".chart-reading-head button");
+await page.keyboard.press("Enter");
+await waitFor(page, () => !document.querySelector(".belowreading"));
+if (!(await chartReadingOpener.evaluate(el => document.activeElement === el))) {
+  fail("closing the chart reading did not restore the opener's focus");
+} else pass("keyboard opening and closing chart details returns focus to the result");
+
+await setMode(page, "Rankings");
 
 /* The rank header's labels stand over their columns. Each
  * figure label's center is compared with the center of the
@@ -245,7 +310,7 @@ const reading = await page.evaluate((rid) => {
   const el = row?.querySelector(".reading.open");
   return {
     open: el !== null && el !== undefined,
-    hasCalib: el?.querySelector(".calib-svg") !== null,
+    hasCalib: Boolean(el?.querySelector(".calstrip")),
     hasTax: /tax/i.test(el?.textContent ?? ""),
     text: el?.textContent ?? "",
   };
@@ -255,11 +320,23 @@ else {
   pass("a row expands in place into its reading");
   if (!reading.hasCalib) fail("the leader's reading does not render its calibration plot");
   else pass("the calibration plot renders inside the reading");
-  if (!reading.hasTax) fail("the leader's reading carries no robustness tax line");
-  else pass("the robustness tax stands in the reading");
+  if (reading.hasTax !== (leader.robustness_tax != null)) {
+    fail("the leader's reading disagrees with the payload on whether robustness tax was measured");
+  }
 }
 
-/* Pin to compare, the tray and its four deltas. */
+const taxRow = full.find((r) => r.run_id !== leader.run_id && r.robustness_tax != null);
+if (taxRow) {
+  await page.evaluate((rid) => {
+    document.querySelector(`[data-rid="${rid}"] .xrow-head`)?.click();
+  }, taxRow.run_id);
+  await waitFor(page, () => /robustness tax/i.test(document.querySelector(".reading.open")?.textContent ?? ""));
+  const measured = await page.evaluate(() => /robustness tax/i.test(document.querySelector(".reading.open")?.textContent ?? ""));
+  if (!measured) fail("the reading omits a measured robustness tax");
+  else pass("the reading prints robustness tax when measured");
+}
+
+/* Pin to compare and open the five-metric comparison. */
 const second = full[1];
 await page.evaluate((rid) => {
   const row = document.querySelector(`[data-rid="${rid}"]`);
@@ -276,20 +353,18 @@ const tray = await page.evaluate(() => {
 });
 if (!tray) fail("pinning two readings does not raise the compare tray");
 else pass("pinning two readings raises the compare tray");
-/* The tray's comparison opens the compare reading with the
- * four derived deltas, each signed in words. */
 await page.evaluate(() => {
   document.querySelector(".tray .segbtn")?.click();
 });
-await waitFor(page, () => document.querySelectorAll(".delta-row").length === 4);
+await waitFor(page, () => document.querySelectorAll(".delta-row").length === 5);
 const deltas = await page.evaluate(() => {
   const rows = [...document.querySelectorAll(".delta-row")];
   return { count: rows.length, text: rows.map((r) => r.textContent ?? "").join(" ") };
 });
-if (deltas.count !== 4) fail(`the compare reading carries ${deltas.count} delta rows, not 4`);
-else pass("the compare reading carries the four deltas");
-if (!/higher|lower/.test(deltas.text)) fail("the compare deltas carry no direction words");
-else pass("the deltas are signed in words");
+if (deltas.count !== 5) fail(`the compare reading carries ${deltas.count} delta rows, expected five`);
+else pass("the compare reading carries five metrics");
+if (!/[-−+]\d/.test(deltas.text)) fail("the compare deltas carry no signed figures");
+else pass("the compare deltas show signed differences");
 await page.evaluate(() => {
   document.querySelector(".tray .ghostbtn")?.click();
 });
@@ -298,63 +373,69 @@ await page.evaluate(() => {
 const firstBefore = await page.evaluate(() => {
   return document.querySelector("[data-rid]")?.getAttribute("data-rid");
 });
-await page.evaluate(() => {
-  const sel = [...document.querySelectorAll(".explorer select")].find((s) =>
-    [...s.options].some((o) => o.value === "cost"),
-  );
-  if (sel) {
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLSelectElement.prototype,
-      "value",
-    ).set;
-    setter.call(sel, "cost");
-    sel.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-});
+await page.select("#explorer-sort", "cost");
 await waitFor(page, (before) => {
   return document.querySelector("[data-rid]")?.getAttribute("data-rid") !== before;
 }, firstBefore);
 const hashAfterSort = await page.evaluate(() => location.hash);
 if (!hashAfterSort.includes("sort")) fail("re-sorting does not write the sort into the hash");
 else pass("explorer state lives in the hash (sort)");
+if (await page.$eval("[data-rid]", (el) => el.dataset.rid) === firstBefore) {
+  fail("re-sorting did not change the first ranked result");
+}
 
 /* The guard population and its basis line. */
-await clickText(page, "Guards").catch(() => null);
+await setPopulation(page, "guards");
 await waitFor(page, () => document.querySelector(".basisline") !== null);
 const basis = await page.evaluate(() => {
   return document.querySelector(".basisline")?.textContent ?? "";
 });
-if (!basis.includes(fmtInt(slices[0].n_cases)) || !basis.includes(fmtInt(fullCases))) {
+if (!basis.includes(fmtInt(slices[0].n_cases)) || !basis.includes("separate ranking")) {
   fail(`the guard basis line does not state its subset basis: ${basis.slice(0, 80)}`);
 } else pass("the guard population states its basis");
-await clickText(page, "All results").catch(() => null);
+await setPopulation(page, "full");
 
 /* Chart mode: hover cross-highlight, then a brush. */
-await clickText(page, "Chart").catch(() => null);
+await setMode(page, "Chart");
 await page.waitForSelector("svg.chart", { timeout: 10000 }).catch(() => null);
+const chartEl = await page.$("svg.chart");
+if (chartEl) {
+  await chartEl.evaluate((svg) => svg.scrollIntoView({ behavior: "instant", block: "center" }));
+  await waitFor(page, () => {
+    const bounds = document.querySelector("svg.chart")?.getBoundingClientRect();
+    return bounds && bounds.top > 80 && bounds.bottom < window.innerHeight;
+  });
+}
 const discCount = await page.evaluate(() => {
   return document.querySelectorAll("svg.chart circle").length;
 });
 if (discCount === 0) fail("chart mode draws no discs");
 else pass(`chart mode draws ${discCount} discs`);
+await page.mouse.move(0, 0);
+if (chartEl) await settleOn(chartEl);
 const hover = await page.evaluate(() => {
-  const disc = document.querySelector("svg.chart circle");
-  if (!disc) return false;
-  const r = disc.getBoundingClientRect();
-  return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  for (const disc of document.querySelectorAll("svg.chart .disc-face")) {
+    const r = disc.getBoundingClientRect();
+    const x = r.x + r.width / 2;
+    const y = r.y + r.height / 2;
+    if (document.elementFromPoint(x, y) === disc) return { x, y, id: disc.closest("[data-disc]").dataset.disc };
+  }
+  return null;
 });
 if (hover) {
   await page.mouse.move(hover.x, hover.y);
-  await new Promise((r) => setTimeout(r, 350));
+  await waitFor(page, () => document.querySelector(".chip") && document.querySelector(".chartsync .hot"));
   const lit = await page.evaluate(() => {
     return {
       chip: document.querySelector(".chip") !== null,
       hot: document.querySelector(".chartsync .hot, .sync-row.hot") !== null,
     };
   });
-  if (!lit.chip) fail("chart hover raises no reading chip");
-  if (!lit.hot) fail("chart hover does not light the same result in the list");
+  if (!lit.chip) fail(`chart hover on ${hover.id} raises no reading chip`);
+  if (!lit.hot) fail(`chart hover on ${hover.id} does not light the result in the list`);
   if (lit.chip && lit.hot) pass("chart hover cross-highlights the list row");
+} else {
+  fail("the chart exposes no visible disc center to hover");
 }
 /* The brush proof asserts numbers, not a text change. The
  * expected count is recomputed from the payload through the
@@ -363,7 +444,7 @@ if (hover) {
  * viewBox, and the count line must land on it within a small
  * boundary tolerance for rows sitting on the drag's edge. */
 const parseShowing = (t) => {
-  const m = /Showing ([\d,]+) of ([\d,]+)/.exec(t ?? "");
+  const m = /([\d,]+) of ([\d,]+) results/.exec(t ?? "");
   return m ? Number(m[1].replace(/,/g, "")) : null;
 };
 const countBefore = await page.evaluate(() => {
@@ -383,15 +464,15 @@ if (!plotBox) {
   fail("the brush proof has no chart to drag on");
 } else if (showingBefore !== null) {
   const { W, H } = plotBox;
-  const padL = 44, padR = 16, padT = 18, padB = 40;
-  const chartedRows = rows.filter((r) => !slices.includes(r));
+  const padL = 44, padR = 30, padT = 18, padB = 40;
+  const chartedRows = full;
   const costs = chartedRows
     .map((r) => r.total_cost_usd)
     .filter((c) => typeof c === "number" && c > 0);
   const lo = Math.pow(10, Math.floor(Math.log10(Math.min(...costs)) * 2) / 2);
-  const hi = Math.pow(10, Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2);
-  const worstRanked = Math.max(...payload.ranked.map((r) => r.asr_conditional ?? 0));
-  const axisMax = Math.max(0.3, Math.round(Math.ceil((worstRanked - 1e-9) / 0.1) * 0.1 * 10) / 10);
+  const hi = Math.max(lo * Math.sqrt(10), Math.pow(10, Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2));
+  const worstRanked = Math.max(...full.filter((r) => r.total_cost_usd > 0).map((r) => r.asr_conditional ?? 0));
+  const axisMax = Math.max(0.1, Math.round(Math.ceil((worstRanked - 1e-9) / 0.05) * 5) / 100);
   const invX = (px) =>
     Math.pow(10, Math.log10(lo) + ((px - padL) / (W - padL - padR)) * (Math.log10(hi) - Math.log10(lo)));
   const invY = (px) => ((padT + (H - padT - padB) - px) / (H - padT - padB)) * axisMax;
@@ -402,7 +483,7 @@ if (!plotBox) {
     vHi: invY(fy0 * H),
   });
   const countIn = (rect) =>
-    rows.filter((r) => {
+    chartedRows.filter((r) => {
       const c = r.total_cost_usd;
       const v = r.asr_conditional;
       if (typeof c !== "number" || !(c > 0) || typeof v !== "number") return false;
@@ -434,6 +515,8 @@ if (!plotBox) {
     fail("the count line is missing or unparseable after the brush");
   } else if (showingAfter >= showingBefore) {
     fail(`a brush drag does not drop the filtered count (${showingBefore} to ${showingAfter})`);
+  } else if (!after.count.includes("area selected")) {
+    fail("the count line does not identify the area selection");
   } else if (showingAfter !== after.sync) {
     fail(`the count line says ${showingAfter} but the chart list carries ${after.sync} rows`);
   } else if (showingAfter < expectedLo || showingAfter > expectedHi) {
@@ -446,26 +529,37 @@ if (!plotBox) {
   } else pass("a brush drag filters to the dragged region and the count line states it");
 }
 
-/* Families mode sorts by a family from its label. The
- * expected order is recomputed from the payload's own family
- * records for the full suite group, rates descending with
- * unmeasured families last, and the rendered group must land
- * on it after the family's label is clicked. */
-await clickText(page, "Clear the brush filter").catch(() => null);
+/* Recompute family sort order from the payload and verify the rendered full suite. */
+await clickText(page, "Clear area selection").catch(() => null);
 await waitFor(page, (total) => {
   const t = document.querySelector(".xcount")?.textContent ?? "";
-  const m = /Showing ([\d,]+) of/.exec(t);
+  const m = /([\d,]+) of/.exec(t);
   return m !== null && Number(m[1].replace(/,/g, "")) === total;
-}, rows.length);
-await clickText(page, "Families").catch(() => null);
+}, full.length);
+if (chartEl) {
+  await chartEl.evaluate(svg => svg.scrollIntoView({ behavior: "instant", block: "center" }));
+  const bounds = await chartEl.boundingBox();
+  const beforeResize = await chartEl.evaluate(svg => svg.viewBox.baseVal.width);
+  await page.mouse.move(bounds.x + 0.3 * bounds.width, bounds.y + 0.3 * bounds.height);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + 0.55 * bounds.width, bounds.y + 0.6 * bounds.height);
+  await page.waitForSelector(".brush-rect");
+  await page.setViewport({ width: 1024, height: 950 });
+  await page.waitForFunction(width => document.querySelector("svg.chart")?.viewBox.baseVal.width !== width, {}, beforeResize);
+  const dragCanceled = !await page.$(".brush-rect");
+  await page.mouse.up();
+  if (!dragCanceled || await page.$(".brush-clear")) {
+    fail("resizing the chart during a drag left a stale brush or applied a filter");
+  } else pass("resizing the chart cancels an in-progress area selection");
+  await page.setViewport({ width: 1280, height: 950 });
+}
+await setMode(page, "Families");
 await page.waitForSelector(".xfamrow", { timeout: 10000 }).catch(() => null);
 const famGroupNames = async () => {
   return page.evaluate(() => {
     const group = document.querySelector(".xfamilies .xgroup");
     if (!group) return [];
-    return [...group.querySelectorAll(".xfamrow .xname")].map((el) =>
-      (el.childNodes[0]?.textContent ?? "").trim(),
-    );
+    return [...group.querySelectorAll(".xfamrow")].map((el) => el.dataset.rid);
   });
 };
 const famKeys = [
@@ -473,7 +567,11 @@ const famKeys = [
 ];
 const famRate = (r, key) => {
   const rec = r.detail?.families?.[key];
-  return rec && typeof rec.asr === "number" ? rec.asr : null;
+  if (!rec || typeof rec.asr !== "number") return null;
+  const { n_flipped: hits, n_eligible: eligible } = rec;
+  if (!Number.isInteger(hits) || !Number.isInteger(eligible) || eligible <= 0 || hits < 0 || hits > eligible) return rec.asr;
+  const exact = hits / eligible;
+  return Math.round(exact * 10000) === Math.round(rec.asr * 10000) ? exact : rec.asr;
 };
 const famExpected = (key) =>
   [...full]
@@ -483,9 +581,9 @@ const famExpected = (key) =>
       if (ra === null && rb === null) return 0;
       if (ra === null) return 1;
       if (rb === null) return -1;
-      return rb - ra;
+      return ra - rb;
     })
-    .map((r) => shortName(r));
+    .map((r) => r.run_id);
 const famBeforeNames = await famGroupNames();
 const famPick = famKeys
   .map((key) => ({ key, expected: famExpected(key) }))
@@ -497,33 +595,24 @@ const famPick = famKeys
 if (!famPick) {
   fail("no family in the payload reorders the full suite group, so the families proof cannot run");
 } else {
-  const famFullName =
-    famPick.key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
-  const clicked = await page.evaluate((label) => {
-    const btn = [...document.querySelectorAll(".xfam-labelbtn")].find(
-      (b) => b.getAttribute("aria-label") === label,
-    );
-    if (!btn) return false;
-    btn.click();
-    return true;
-  }, `Sort by ${famFullName}`);
-  if (!clicked) {
-    fail(`no family label button offers ${famFullName}`);
+  const selected = await page.select("#explorer-sort", `fam:${famPick.key}`);
+  if (selected.length === 0) {
+    fail(`the Sort by control does not offer ${famPick.key}`);
   } else {
     await waitFor(page, (want) => {
       const group = document.querySelector(".xfamilies .xgroup");
-      const first = group?.querySelector(".xfamrow .xname")?.childNodes[0]?.textContent?.trim();
+      const first = group?.querySelector(".xfamrow")?.dataset.rid;
       return first === want;
     }, famPick.expected[0]);
     const famAfterNames = await famGroupNames();
     const famHash = await page.evaluate(() => location.hash);
     if (famAfterNames.join("|") !== famPick.expected.join("|")) {
       fail(
-        `families mode sorted by ${famFullName} lands on ${famAfterNames.slice(0, 3).join(", ")}, the payload order is ${famPick.expected.slice(0, 3).join(", ")}`,
+        `families mode sorted by ${famPick.key} lands on ${famAfterNames.slice(0, 3).join(", ")}, the payload order is ${famPick.expected.slice(0, 3).join(", ")}`,
       );
     } else if (!famHash.includes("sort=fam")) {
       fail("the family sort does not write itself into the hash");
-    } else pass("families mode sorts by a family from its label");
+    } else pass("families mode sorts by a family from the Sort by control");
   }
 }
 
@@ -546,440 +635,219 @@ await waitFor(page, () => document.querySelector(".xfamilies .reading.open") !==
   } else pass("families mode carries exactly one reading for an expanded row");
 }
 
-/* A finding's action sets the explorer state. */
-await page.evaluate(() => window.scrollTo(0, 0));
-const findingsActions = await page.$$(".finding .f-action");
-if (findingsActions.length !== 5) fail(`the findings carry ${findingsActions.length} actions, not 5`);
-else {
-  await settleOn(findingsActions[1]);
-  await findingsActions[1].click();
-  await new Promise((r) => setTimeout(r, 400));
-  const q = await page.evaluate(() => {
-    const input = document.querySelector(".explorer input");
-    return { value: input?.value ?? "", hash: location.hash };
-  });
-  if (dupName && !q.hash.includes("q=") && !q.value.includes(shortName({ display_name: dupName }))) {
-    fail("Finding 2's action does not set the explorer search to the duplicated model");
-  } else pass("a finding's action sets the explorer state it promises");
+/* Follow each analysis into the relevant full-suite view, then switch back. */
+for (const mode of ["families", "chart", "families"]) {
+  const link = await page.$(`#findings a[href*="mode=${mode}"]`);
+  if (!link) {
+    fail(`missing analysis link for ${mode}`);
+    continue;
+  }
+  await settleOn(link);
+  await link.click();
+  const selector = mode === "chart" ? "svg.chart .disc" : ".xfamrow.full";
+  if (!await page.waitForSelector(selector, { timeout: 5000 }).catch(() => null)) {
+    fail(`analysis link did not display ${mode} results`);
+  } else pass(`analysis opened ${mode} results`);
 }
 
-/* Finding actions followed in sequence land where each one
- * promises. The price action promises the priced chart, the
- * guards action promises the guards in rank mode, and the
- * price action again promises the chart. State an action
- * does not name returns to its default on each landing, so
- * the guards step carries no priced band and the return step
- * carries discs. On the old merge semantics the guards step
- * inherits the priced band over a population whose costs are
- * unrecorded and lands on the empty state. */
-{
-  const costBand = () =>
-    page.evaluate(() => {
-      const sel = [...document.querySelectorAll(".explorer select")].find((s) =>
-        [...s.options].some((o) => o.value === "priced"),
-      );
-      return sel?.value ?? null;
-    });
-  await settleOn(findingsActions[2]);
-  await findingsActions[2].click();
-  await page.waitForSelector("svg.chart", { timeout: 10000 }).catch(() => null);
-  const pricedDiscs = await page.evaluate(
-    () => document.querySelectorAll("svg.chart circle").length,
-  );
-  const pricedBand = await costBand();
-  if (pricedDiscs === 0) fail("the price action lands on a chart with no discs");
-  else if (pricedBand !== "priced") {
-    fail(`the price action leaves the cost band at ${pricedBand}, not priced`);
-  } else pass("the price action lands on the priced chart");
-
-  await settleOn(findingsActions[3]);
-  await findingsActions[3].click();
-  await waitFor(page, () => document.querySelector(".basisline") !== null);
-  const guardsStep = await page.evaluate(() => {
-    const seg = [...document.querySelectorAll(".segbtn")].find(
-      (b) => b.textContent.trim() === "Guards",
-    );
-    return {
-      guardsOn: seg?.classList.contains("on") ?? false,
-      empty: document.querySelector(".xempty") !== null,
-      rows: document.querySelectorAll(".xrow").length,
-    };
-  });
-  const guardsBand = await costBand();
-  if (!guardsStep.guardsOn) {
-    fail("the guards action does not land on the guards population");
-  } else if (guardsStep.empty || guardsStep.rows === 0) {
-    fail("the guards action lands on the empty state instead of the guards");
-  } else if (guardsBand !== "all") {
-    fail(`the guards action inherits the cost band ${guardsBand} from the price action`);
-  } else pass("the guards action lands on the guards with rows visible");
-
-  await settleOn(findingsActions[2]);
-  await findingsActions[2].click();
-  await page.waitForSelector("svg.chart", { timeout: 10000 }).catch(() => null);
-  const returnDiscs = await page.evaluate(
-    () => document.querySelectorAll("svg.chart circle").length,
-  );
-  if (returnDiscs === 0) {
-    fail("returning to the price action lands on a chart with no discs");
-  } else pass("the price action after the guards lands on the priced chart again");
+/* Static model addresses and previously shared Explorer hashes. */
+for (const [row, pop] of [[leader, "full"], [slices[0], "guards"], [payload.unranked[0], "flagged"]]) {
+  const slug = modelSlug(row);
+  await page.goto(`${base}/models/${slug}/`, { waitUntil: "networkidle0" });
+  await waitFor(page, () => document.querySelector(".reading.open") !== null);
+  const deep = await page.evaluate((name) => ({
+    pop: document.querySelector("#explorer-pop")?.value,
+    open: Boolean(document.querySelector(".reading.open")),
+    named: document.querySelector(".belowreading")?.textContent.includes(name)
+      || document.querySelector(".xrow.open .xname")?.textContent.includes(name),
+  }), shortName(row));
+  if (deep.pop !== pop || !deep.open || !deep.named) {
+    fail(`model address ${slug} did not open its reading in the ${pop} results`);
+  } else pass(`model address ${slug} opens its reading in the ${pop} results`);
+  if (pop === "full") {
+    await page.focus(".chart-reading-head button");
+    await page.keyboard.press("Enter");
+    await waitFor(page, () => document.activeElement?.matches(".sync-row.sel"));
+    if (!(await page.evaluate(() => document.activeElement?.matches(".sync-row.sel")))) {
+      fail("closing a permalink's chart reading did not focus the selected result");
+    } else pass("a chart reading opened from a permalink returns focus to the selected result");
+  }
 }
+await page.goto(`${base}/#explorer?mode=rank`, { waitUntil: "networkidle0" });
+await waitFor(page, () => document.querySelector("#explorer-pop")?.value === "all");
+const legacyCount = await page.$$eval(".xrow", (results) => results.length);
+if (legacyCount !== rows.length) fail("a legacy Explorer link lost the original All results scope");
+else pass("a legacy Explorer link keeps the original All results scope");
+const vendorSelect = '#explorer select:has(option[value="google"])';
+await page.goto(`${base}/#explorer?pop=full&vendor=google`, { waitUntil: "networkidle0" });
+await page.waitForSelector(".sync-row.sel");
+if (!(await page.$eval(".sync-row.sel", el => el.textContent.includes("gemini-4-argon")))) {
+  fail("a legacy Explorer link without sel did not select the default opener");
+}
+await page.select(vendorSelect, "all");
+const alternate = await page.$eval(".sync-row:not(.sel)", el => {
+  el.click();
+  return el.textContent;
+});
+await page.select(vendorSelect, "google");
+await waitFor(page, () => new URLSearchParams(location.hash.split("?")[1]).get("sel") === "");
+await page.reload({ waitUntil: "networkidle0" });
+const restored = await page.evaluate(() => {
+  const params = new URLSearchParams(location.hash.split("?")[1]);
+  return params.get("vendor") === "google" && params.get("sel") === "" &&
+    Boolean(document.querySelector(".sync-row")) && !document.querySelector(".sync-row.sel, .belowreading");
+});
+if (!restored) fail(`reloading a filter that excluded ${alternate} restored a selection`);
+else pass("an explicitly cleared chart selection survives a reload with the default opener visible");
 
-/* Deep link opens the reading. */
-await page.goto(`${base}/#result=${modelSlug(leader)}`, { waitUntil: "networkidle0" });
-await waitFor(page, (rid) => {
-  const row = document.querySelector(`[data-rid="${rid}"]`);
-  return row && row.querySelector(".reading.open") !== null;
-}, leader.run_id);
-const deep = await page.evaluate((rid) => {
-  const row = document.querySelector(`[data-rid="${rid}"]`);
-  return row?.querySelector(".reading.open") !== null;
-}, leader.run_id);
-if (!deep) fail("a model address does not open its reading in the explorer");
-else pass("a model address opens its reading in the explorer");
+/* Model profile filters preserve the board's ranks and combine in every view. */
+const openFrontierRuns = full.filter((r) =>
+  ["kimi-k3", "deepseek-flash", "MiniMax-M3"].includes(r.adapter_version),
+);
+const selectedFrontier = openFrontierRuns[0];
+const profileHash = new URLSearchParams({
+  pop: "full", mode: "rank", kind: "general", interface: "structured", serving: "hosted", weights: "open",
+  tier: "frontier", frontier: "1", sel: modelSlug(selectedFrontier), pin: modelSlug(leader), open: "1",
+});
+await page.goto(`${base}/#explorer?${profileHash}`, { waitUntil: "networkidle0" });
+await waitFor(page, () => document.querySelector(".reading-profile") !== null);
+const filteredRankings = await page.evaluate(() => ({
+  ranks: [...document.querySelectorAll(".xrow")].map((row) => [
+    row.dataset.rid, Number(row.querySelector(".xrank")?.textContent),
+  ]),
+  profile: document.querySelector(".reading-profile")?.textContent ?? "",
+  tray: Boolean(document.querySelector(".tray")),
+  controls: document.querySelector(".model-filters summary")?.textContent ?? "",
+}));
+const expectedRanks = openFrontierRuns.map((r) => [r.run_id, r.rank]);
+const expectedProfileLabels = ["General-purpose", "Structured generation", "Hosted inference", "Documented open weights", "Frontier baselines"];
+if (JSON.stringify(filteredRankings.ranks) !== JSON.stringify(expectedRanks) ||
+    !expectedProfileLabels.every((label) => filteredRankings.controls.includes(label))) {
+  fail(`the combined model filters changed ranks or returned unexpected rows: ${JSON.stringify(filteredRankings)}`);
+} else pass("combined model filter links preserve the full-suite ranks");
+if (filteredRankings.tray ||
+    !expectedProfileLabels.every((label) => filteredRankings.profile.includes(label))) {
+  fail("a filtered reading omitted its model profile or included a hidden pin");
+} else pass("a filtered reading shows its profile and omits the hidden pin");
+
+await setMode(page, "Chart");
+const chartProfile = await page.evaluate(() => ({
+  results: document.querySelectorAll(".sync-row").length,
+  costFrontier: [...document.querySelectorAll(".xcheck")]
+    .find((label) => label.textContent.trim() === "Cost frontier")?.querySelector("input")?.checked,
+}));
+if (chartProfile.results !== expectedRanks.length || !chartProfile.costFrontier) {
+  fail("the model cohort and the cost frontier overlay do not work independently");
+} else pass("the model cohort and cost frontier overlay coexist on the chart");
+await page.$eval(".model-filters summary", (el) => el.click());
+await page.select("#explorer-serving", "local");
+await waitFor(page, () => location.hash.includes("serving=local"));
+const hiddenSelection = await page.evaluate(() => {
+  const params = new URLSearchParams(location.hash.split("?")[1]);
+  return params.get("serving") === "local" && params.get("sel") === "" && !params.has("pin") && !params.has("open") &&
+    !document.querySelector(".belowreading, .tray, .footstrip-name");
+});
+if (!hiddenSelection) fail("filters retain a hidden selected reading or pin in the view or URL");
+else pass("an incompatible model filter clears the hidden reading and its link state");
+await setMode(page, "Families");
+if (!await page.$(".xfamilies .xempty")) {
+  fail("the family view does not explain an empty filter intersection");
+}
+await page.$eval(".model-filters button", (el) => el.click());
+await setMode(page, "Rankings");
+const cleared = await page.evaluate(() => ({
+  results: document.querySelectorAll(".xrow").length,
+  reading: Boolean(document.querySelector(".reading.open")),
+  filterKeys: [...new URLSearchParams(location.hash.split("?")[1]).keys()]
+    .filter((key) => ["kind", "interface", "serving", "weights", "tier"].includes(key)),
+}));
+if (cleared.results !== full.length || cleared.reading || cleared.filterKeys.length !== 0) {
+  fail("clearing the model filters did not restore the full suite without reopening a stale reading");
+} else pass("clearing model filters restores the full suite without a stale reading");
+
+const luna = (adapter) => full.find((row) => row.adapter_name === adapter && row.adapter_version === "gpt-6-luna");
+const lunaCompare = new URLSearchParams({
+  pop: "full", mode: "rank", kind: "general", open: "1",
+  sel: modelSlug(luna("openai-decisions")), pin: modelSlug(luna("openai-structured")),
+});
+await page.goto(`${base}/#explorer?${lunaCompare}`, { waitUntil: "networkidle0" });
+await waitFor(page, () => document.querySelectorAll(".compare-side .reading-profile").length === 2);
+const lunaProfiles = await page.$$eval(".compare-side .reading-profile", (profiles) =>
+  profiles.map((profile) => Object.fromEntries([...profile.querySelectorAll("div")].map((field) => [
+    field.querySelector("dt").textContent, field.querySelector("dd").textContent,
+  ]))),
+);
+if (lunaProfiles[0]["Decision interface"] !== "Typed decision questions" ||
+    lunaProfiles[1]["Decision interface"] !== "Structured generation" ||
+    lunaProfiles.some((profile) => profile["Model role"] !== "General-purpose models")) {
+  fail(`the Luna comparison misclassified a run: ${JSON.stringify(lunaProfiles)}`);
+} else pass("the Luna comparison shows the same model role and two different interfaces");
+const mixedCompare = new URLSearchParams({
+  pop: "all", mode: "rank", open: "1", sel: modelSlug(leader), pin: modelSlug(slices[0]),
+});
+await page.goto(`${base}/#explorer?${mixedCompare}`, { waitUntil: "networkidle0" });
+await waitFor(page, () => document.querySelector(".compare-deltas")?.textContent.includes("different case sets"));
+if (await page.$(".delta-row") || !(await page.$eval(".tray-delta", el => el.textContent)).includes("not comparable")) {
+  fail("guard and full-suite results displayed a cross-population difference");
+} else pass("a mixed-population comparison keeps the two readings without subtracting their rates");
 await page.close();
 
-/* ---------- motion, BUILD-SPEC part 6 ---------- */
+/* ---------- ranking transitions ---------- */
 
-/* All five state changes animate at the same 200ms character.
- * Expansion and selection are read off computed styles,
- * filtering off the entering rows and the re-sort's inline
- * FLIP transition, and mode switching off the view wrapper.
- * A reduced motion page must reach every end state with no
- * travel, its disclosures at full height from the first
- * frame, and its color changes intact. */
-const motionPage = await browser.newPage();
-await motionPage.setViewport({ width: 1440, height: 1000 });
-await motionPage.goto(`${base}/`, { waitUntil: "networkidle0" });
-await motionPage.evaluate(() => {
-  document.querySelector(".xrow-head")?.click();
-});
-await waitFor(motionPage, () => document.querySelector(".reading.open") !== null);
-const motionStyles = await motionPage.evaluate(() => {
-  const reading = document.querySelector(".reading.open");
-  const row = document.querySelector(".xrow");
-  const rs = reading ? getComputedStyle(reading) : null;
-  const ws = row ? getComputedStyle(row) : null;
-  return {
-    readingName: rs?.animationName ?? "",
-    readingDur: rs?.animationDuration ?? "",
-    rowTransition: ws?.transitionProperty ?? "",
-    rowDur: ws?.transitionDuration ?? "",
-  };
-});
-if (
-  !motionStyles.readingName.includes("xreading-in") ||
-  motionStyles.readingDur !== "0.2s"
-) {
-  fail(
-    `expansion does not animate at 200ms (name ${motionStyles.readingName}, duration ${motionStyles.readingDur})`,
-  );
-} else if (
-  !motionStyles.rowTransition.includes("border-color") ||
-  !motionStyles.rowDur.includes("0.2s")
-) {
-  fail("selection does not transition the row at 200ms");
-} else pass("expansion and selection animate at 200ms");
-
-/* Filtering. Rows entering the widened set fade in, and a
- * survivor of the re-sort travels on the FLIP transition. */
-await clickText(motionPage, "Full suite").catch(() => null);
-await waitFor(motionPage, (n) => document.querySelectorAll(".xrow").length === n, full.length);
-await clickText(motionPage, "All results").catch(() => null);
-await waitFor(motionPage, () => document.querySelector(".xrow.enter") !== null);
-const entered = await motionPage.evaluate(() => {
-  const el = document.querySelector(".xrow.enter");
-  if (!el) return null;
-  const s = getComputedStyle(el);
-  return { name: s.animationName, dur: s.animationDuration };
-});
-if (!entered || !entered.name.includes("xrow-in") || entered.dur !== "0.2s") {
-  fail("filtering admits new rows with no 200ms fade");
-} else pass("filtering fades entering rows at 200ms");
-await clickText(motionPage, "Cost", "button.xh").catch(() => null);
-let flipSeen = false;
-for (let i = 0; i < 10 && !flipSeen; i += 1) {
-  flipSeen = await motionPage.evaluate(() => {
-    return [...document.querySelectorAll("[data-rid]")].some((el) => {
-      const s = getComputedStyle(el);
-      return (
-        s.transitionProperty.includes("transform") &&
-        s.transitionDuration === "0.2s"
-      );
-    });
-  });
-  if (!flipSeen) await new Promise((r) => setTimeout(r, 25));
-}
-if (!flipSeen) fail("re-sorting travels no row on the 200ms FLIP transition");
-else pass("re-sorting travels rows at 200ms");
-
-/* Mode switching crossfades the view wrapper. */
-await clickText(motionPage, "Chart").catch(() => null);
-await motionPage.waitForSelector(".xview svg.chart", { timeout: 10000 }).catch(() => null);
-const viewAnim = await motionPage.evaluate(() => {
-  const v = document.querySelector(".xview");
-  const s = v ? getComputedStyle(v) : null;
-  return { name: s?.animationName ?? "", dur: s?.animationDuration ?? "" };
-});
-if (!viewAnim.name.includes("xview-in") || viewAnim.dur !== "0.2s") {
-  fail("mode switching does not animate the view at 200ms");
-} else pass("mode switching animates the view at 200ms");
-
-/* Filtering in chart mode. Discs admitted to the visible set
- * on a filter change carry the same 200ms enter fade as
- * rows. The vendor filter narrows the chart, and clearing it
- * admits the discs back. */
-const vendorOptions = await motionPage.evaluate(() => {
-  const field = [...document.querySelectorAll(".xfield")].find(
-    (f) => f.querySelector(".micro")?.textContent.trim() === "Vendor",
-  );
-  const sel = field?.querySelector("select");
-  return sel ? [...sel.options].map((o) => o.value) : [];
-});
-if (vendorOptions.length < 2) {
-  fail("the vendor filter offers no second value, so the chart filtering proof cannot run");
-} else {
-  const setVendor = (value) =>
-    motionPage.evaluate((v) => {
-      const field = [...document.querySelectorAll(".xfield")].find(
-        (f) => f.querySelector(".micro")?.textContent.trim() === "Vendor",
-      );
-      const sel = field?.querySelector("select");
-      if (!sel) return;
-      const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLSelectElement.prototype,
-        "value",
-      ).set;
-      setter.call(sel, v);
-      sel.dispatchEvent(new Event("change", { bubbles: true }));
-    }, value);
-  await setVendor(vendorOptions[1]);
-  await new Promise((r) => setTimeout(r, 350));
-  await setVendor("all");
-  await waitFor(motionPage, () => document.querySelector(".disc.enter") !== null);
-  const discAnim = await motionPage.evaluate(() => {
-    const el = document.querySelector(".disc.enter");
-    if (!el) return null;
-    const s = getComputedStyle(el);
-    return { name: s.animationName, dur: s.animationDuration };
-  });
-  if (!discAnim || !discAnim.name.includes("xrow-in") || discAnim.dur !== "0.2s") {
-    fail("filtering in chart mode admits discs with no 200ms fade");
-  } else pass("filtering fades entering discs at 200ms");
-
-  /* The rail and the sync list are chart surfaces too, and
-   * part 6 names no list carve-out. Landing on the guards
-   * trades the plotted field for the rail alone. Widening
-   * back to all results admits the costless rows to the rail
-   * and every charted row to the sync list on one commit, so
-   * both lists stand or fall on that landing. */
-  await clickText(motionPage, "Guards").catch(() => null);
-  await waitFor(
-    motionPage,
-    (n) =>
-      document.querySelectorAll(".rail-row").length === n &&
-      document.querySelectorAll(".disc").length === 0,
-    slices.length,
-  );
-  await clickText(motionPage, "All results").catch(() => null);
-  await waitFor(
-    motionPage,
-    () =>
-      document.querySelector(".rail-row.enter") !== null &&
-      document.querySelector(".sync-row.enter") !== null,
-  );
-  const listAnim = await motionPage.evaluate(() => {
-    const read = (sel) => {
-      const el = document.querySelector(sel);
-      if (!el) return null;
-      const s = getComputedStyle(el);
-      return { name: s.animationName, dur: s.animationDuration };
-    };
-    return { rail: read(".rail-row.enter"), sync: read(".sync-row.enter") };
-  });
-  const listFades = (a) =>
-    a !== null && a.name.includes("xrow-in") && a.dur === "0.2s";
-  if (!listFades(listAnim.rail) || !listFades(listAnim.sync)) {
-    fail("filtering in chart mode admits rail or sync rows with no 200ms fade");
-  } else pass("filtering fades entering rail and sync rows at 200ms");
-}
-await motionPage.close();
-
-/* Resting state sampling shared by the reduced motion
- * proof and its full motion comparison page. Only the
- * properties the M19 branch must leave identical are
- * read, so the animation names that differ by design
- * never enter the comparison. */
-const restingSample = () => {
-  const read = (sel, props) => {
-    const el = document.querySelector(sel);
-    if (!el) return null;
-    const s = getComputedStyle(el);
-    const out = {};
-    for (const p of props) out[p] = s[p];
-    return out;
-  };
-  const reading = document.querySelector(".reading.open");
-  return {
-    reading: reading
-      ? { height: reading.offsetHeight, opacity: getComputedStyle(reading).opacity }
-      : null,
-    row: read(".xrow", ["backgroundColor", "color", "opacity", "transform"]),
-    segOn: read(".segbtn.on", ["backgroundColor", "color"]),
-    pin: read(".pinbtn", ["backgroundColor", "color"]),
-  };
-};
-
-/* Reduced motion takes the designed M19 branch. The
- * disclosure cross fades with its height final at once,
- * measured on the frames of the open itself. Entrances
- * fade and never travel, sampled on a view switch.
- * Anchor jumps are instant, the color transitions that
- * carry state survive, and resting states are compared
- * against a full motion page property by property. */
-const rmPage = await browser.newPage();
-await rmPage.emulateMediaFeatures([
-  { name: "prefers-reduced-motion", value: "reduce" },
-]);
-await rmPage.setViewport({ width: 1440, height: 1000 });
-await rmPage.goto(`${base}/`, { waitUntil: "networkidle0" });
-/* The open runs inside one page side sampling run, so
- * the disclosure height is read on the frames of the
- * open itself. A frame below the final height means the
- * grid rows moved, whatever the keyframe names claim. */
-const rmOpen = await rmPage.evaluate(async () => {
-  document.querySelector(".xrow-head")?.click();
-  const heights = [];
-  const t0 = performance.now();
-  await new Promise((resolve) => {
-    const tick = () => {
-      const el = document.querySelector(".reading.open");
-      if (el) heights.push(el.offsetHeight);
-      if (performance.now() - t0 < 320) requestAnimationFrame(tick);
-      else resolve();
-    };
-    requestAnimationFrame(tick);
-  });
-  return heights;
-});
-await waitFor(rmPage, () => document.querySelector(".reading.open") !== null);
-const rmStyles = await rmPage.evaluate(() => {
-  const reading = document.querySelector(".reading.open");
-  const row = document.querySelector(".xrow");
-  const rs = reading ? getComputedStyle(reading) : null;
-  const ws = row ? getComputedStyle(row) : null;
-  return {
-    readingName: rs?.animationName ?? "",
-    readingClip: rs?.clipPath ?? "",
-    rowDur: ws?.transitionDuration ?? "",
-    scrollBehavior: getComputedStyle(document.documentElement).scrollBehavior,
-  };
-});
-await new Promise((r) => setTimeout(r, 450));
-const rmRest = await rmPage.evaluate(restingSample);
-const normPage = await browser.newPage();
-await normPage.setViewport({ width: 1440, height: 1000 });
-await normPage.goto(`${base}/`, { waitUntil: "networkidle0" });
-await normPage.evaluate(() => {
-  document.querySelector(".xrow-head")?.click();
-});
-await waitFor(normPage, () => document.querySelector(".reading.open") !== null);
-await new Promise((r) => setTimeout(r, 450));
-const normRest = await normPage.evaluate(restingSample);
-await normPage.close();
-const restingMatch = JSON.stringify(rmRest) === JSON.stringify(normRest);
-await clickText(rmPage, "Cost", "button.xh").catch(() => null);
-await new Promise((r) => setTimeout(r, 350));
-const rmTransforms = await rmPage.evaluate(() => {
-  return [...document.querySelectorAll("[data-rid]")].filter((el) =>
-    (el.getAttribute("style") ?? "").includes("transform"),
-  ).length;
-});
-/* The view switch carries the one travel bearing
- * entrance in the sheet. Every frame of the switch is
- * read for the view wrapper, and a single frame with
- * vertical travel in its computed transform fails the
- * branch. */
-const rmEntrance = await rmPage.evaluate(async () => {
-  const btn = [...document.querySelectorAll("button")].find(
-    (b) => b.textContent.trim() === "Chart",
-  );
-  btn?.click();
-  const samples = [];
-  const t0 = performance.now();
-  await new Promise((resolve) => {
-    const tick = () => {
-      const el = document.querySelector(".xview");
-      if (el) {
-        const s = getComputedStyle(el);
-        samples.push({ name: s.animationName, transform: s.transform });
+for (const reduced of [false, true]) {
+  const motionPage = await browser.newPage();
+  await motionPage.setViewport({ width: 1440, height: 1000 });
+  await motionPage.emulateMediaFeatures([
+    { name: "prefers-reduced-motion", value: reduced ? "reduce" : "no-preference" },
+  ]);
+  await motionPage.goto(`${base}/#explorer?mode=rank&pop=full`, { waitUntil: "networkidle0" });
+  await motionPage.waitForSelector(".xrow");
+  const state = await motionPage.evaluate(async () => {
+    const first = () => document.querySelector(".xrow")?.dataset.rid;
+    const before = first();
+    const sort = document.querySelector("#explorer-sort");
+    sort.value = "cost";
+    sort.dispatchEvent(new Event("change", { bubbles: true }));
+    let jump = false;
+    let transition = false;
+    for (let i = 0; i < 10; i += 1) {
+      await new Promise(requestAnimationFrame);
+      for (const row of document.querySelectorAll(".xrow")) {
+        const style = getComputedStyle(row);
+        jump ||= style.transform !== "none";
+        transition ||= style.transitionProperty === "transform" && style.transitionDuration === "0.2s";
       }
-      if (performance.now() - t0 < 320) requestAnimationFrame(tick);
-      else resolve();
-    };
-    requestAnimationFrame(tick);
+    }
+    return { changed: first() !== before, jump, transition };
   });
-  return { clicked: Boolean(btn), samples };
-});
-const travelOf = (t) => {
-  if (t === "none") return 0;
-  const m = /matrix\(([^)]+)\)/.exec(t);
-  if (!m) return Number.NaN;
-  return Math.abs(parseFloat(m[1].split(",")[5].trim()));
-};
-const entranceRan =
-  rmEntrance.clicked &&
-  rmEntrance.samples.some((s) => s.name.includes("xview-in"));
-const entranceTravels = rmEntrance.samples.some(
-  (s) => travelOf(s.transform) !== 0,
-);
-const finalHeight = rmOpen.length > 0 ? rmOpen[rmOpen.length - 1] : null;
-const heightInstant =
-  finalHeight !== null &&
-  rmOpen.every((h) => Math.abs(h - finalHeight) <= 1);
-if (
-  !rmStyles.readingName.includes("xreading-rm") ||
-  rmStyles.readingClip !== "none" ||
-  rmStyles.scrollBehavior !== "auto" ||
-  !rmStyles.rowDur.includes("0.2s") ||
-  rmTransforms > 0 ||
-  !heightInstant ||
-  !entranceRan ||
-  entranceTravels ||
-  !restingMatch
-) {
-  fail(
-    `reduced motion breaks the M19 branch (reading ${rmStyles.readingName}, clip ${rmStyles.readingClip}, scroll ${rmStyles.scrollBehavior}, row transition ${rmStyles.rowDur}, ${rmTransforms} transformed rows, disclosure heights ${JSON.stringify(rmOpen)}, entrance ran ${entranceRan} and travelled ${entranceTravels}, resting match ${restingMatch})`,
-  );
-} else pass("reduced motion cross fades the disclosure at its final height, fades entrances with no travel, lands anchor jumps at once, keeps color changes, and rests identical to the full motion branch");
-await rmPage.close();
+  if (!state.changed || state.jump === reduced || state.transition === reduced) {
+    fail(`ranking re-sort fails under ${reduced ? "reduced" : "normal"} motion: ${JSON.stringify(state)}`);
+  } else pass(reduced ? "reduced motion re-sorts without moving rows" : "re-sorting moves rows with a 200ms transition");
+  await motionPage.close();
+}
 
 /* ---------- the phone touch session ---------- */
 
 const phone = await browser.newPage();
 await phone.setViewport({ width: 390, height: 844, hasTouch: true, isMobile: true });
 await phone.goto(`${base}/`, { waitUntil: "networkidle0" });
-/* The phone order (BUILD-SPEC section 7) runs Finding 1,
- * then the explorer, then the wire and guards findings,
- * then Method. */
-const phoneOrder = await phone.evaluate(() => {
-  const top = (sel) => document.querySelector(sel)?.getBoundingClientRect().top ?? null;
-  return {
-    split: top('[data-finding="split"]'),
-    explorer: top("#explorer"),
-    wire: top('[data-finding="wire"]'),
-    method: top("#method"),
-  };
+const ordered = await phone.evaluate(() => {
+  const offsets = ["#results", "#findings", "#explorer", "#method"].map(id =>
+    document.querySelector(id)?.getBoundingClientRect().top);
+  return offsets.every((y, i) => Number.isFinite(y) && (!i || y > offsets[i - 1]));
 });
-if (
-  phoneOrder.split === null ||
-  !(phoneOrder.split < phoneOrder.explorer &&
-    phoneOrder.explorer < phoneOrder.wire &&
-    phoneOrder.wire < phoneOrder.method)
-) {
-  fail(`the phone order is not Finding 1, explorer, the wire and guards findings, Method (${JSON.stringify(phoneOrder)})`);
-} else pass("the phone order runs Finding 1, the explorer, the wire and guards findings, Method");
+if (!ordered) fail("phone section order differs from the desktop study");
+else pass("phone preserves the study reading order");
 await phone.evaluate(() => document.querySelector(".explorer")?.scrollIntoView());
+const phoneChart = await phone.evaluate(() => {
+  const chart = document.querySelector("svg.chart");
+  const rect = chart?.getBoundingClientRect();
+  const plate = chart?.querySelector(".label-plate")?.getBoundingClientRect();
+  return Boolean(rect && plate && rect.width >= 300 && plate.left >= rect.left && plate.right <= rect.right);
+});
+if (!phoneChart) fail("the phone chart clips its selected result label");
+else pass("the phone chart fits its selected result label");
+await setMode(phone, "Rankings");
 const head = await phone.$(`[data-rid="${leader.run_id}"] .xrow-head`);
 if (head) {
   await settleOn(head);
@@ -1002,14 +870,14 @@ if (!phoneState.readingVisible) fail("at phone size a tap does not open the read
 if (!phoneState.stripVisible || !phoneState.stripText.includes(shortName(leader))) {
   fail("the phone foot strip does not name the selection");
 } else pass("the phone strip names the selection and its rate");
-/* Dismiss by tapping outside the sheet (the hero area). */
-await phone.touchscreen.tap(195, 60);
-await new Promise((r) => setTimeout(r, 400));
+const closeReading = await phone.$(".reading-close");
+if (closeReading) await closeReading.tap();
+await waitFor(phone, () => document.querySelector(".reading.open") === null);
 const dismissed = await phone.evaluate(() => {
   return document.querySelector(".reading.open") === null;
 });
-if (!dismissed) fail("a tap outside the phone sheet does not dismiss it");
-else pass("a tap outside dismisses the phone sheet");
+if (!dismissed) fail("the phone sheet's close control does not dismiss it");
+else pass("the phone sheet's close control dismisses it");
 await phone.close();
 
 await browser.close();

@@ -1,127 +1,42 @@
-import {
-  boardGroups,
-  boardVersions,
-  modelCounts,
-  multiResultModels,
-} from "@/lib/payload";
-import { fmtInt } from "@/lib/format";
+import { boardGroups, boardVersions, dateWords } from "@/lib/payload";
 import { explorerData } from "@/lib/explorerData";
 import VendorSprite from "@/components/VendorSprite";
 import TopBar from "@/components/TopBar";
+import ModelGroups from "@/components/ModelGroups";
+import { modelProfile } from "@/lib/modelProfile";
 import Headline from "@/components/Headline";
-import Findings from "@/components/Findings";
+import StudyFindings from "@/components/StudyFindings";
 import Explorer from "@/components/Explorer";
 import MethodStub from "@/components/MethodStub";
+import { shareMetadata } from "@/lib/shareMetadata";
 
-/**
- * The board. Numbered scenes in the Maidan landing's design
- * language, the money shot compositions carried as each
- * scene's object. The hero states what Peira is, the headline
- * results follow at once, the explorer stands as the full
- * record, and the findings stand after it as evidence.
- * Method stands in its diet form. This source is what
- * publishes to peiratrial.dev.
- */
-
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-
-function dateWords(iso: string): string {
-  const [y, m, d] = iso
-    .slice(0, 10)
-    .split("-")
-    .map((part) => Number(part));
-  if (!y || !m || !d || m < 1 || m > 12) return iso.slice(0, 10);
-  return `${d} ${MONTHS[m - 1]} ${y}`;
-}
+export const metadata = shareMetadata({
+  title: "Peira | Decision robustness benchmark",
+  description: "Compare AI decisions before and after an attack. Explore model rankings, attack families, run costs and the evidence behind each result.",
+  path: "/",
+  imagePath: "/opengraph-image",
+  imageAlt: "Peira decision robustness benchmark. Attack success across the ranked full-suite results, from lowest to highest.",
+});
 
 export default function Home() {
-  const groups = boardGroups();
   const versions = boardVersions();
-  const counts = modelCounts();
-  const multi = multiResultModels();
-  /* The re-measurement note the Method scene promises at the
-   * foot of the page, derived from the payload's own re-run
-   * records. A re-run record proves only that a result stands
-   * chained to an earlier run in its record, on a stated date,
-   * and nothing more, so the note claims exactly that. The
-   * record cannot say whether the chain was a fresh run or a
-   * resume, and the note does not try. The figures printed
-   * are each result's own standing figures, and the result's
-   * reading in the explorer states its chain. The note exists
-   * only while the payload carries re-run records to stand
-   * on. */
-  const rerunDates = [
-    ...groups.full,
-    ...groups.slices,
-    ...groups.flagged,
-  ]
-    .map((r) => r.rerun?.date)
-    .filter((d): d is string => typeof d === "string")
-    .sort();
-  const rerunNote =
-    rerunDates.length === 0
-      ? null
-      : rerunDates[0] === rerunDates[rerunDates.length - 1]
-        ? `Re-measurement note. ${fmtInt(rerunDates.length)} results on this board are chained to an earlier run in their records, on ${dateWords(rerunDates[0])}. The figures printed are each result's own standing figures, and each result's reading states its chain.`
-        : `Re-measurement note. ${fmtInt(rerunDates.length)} results on this board are chained to an earlier run in their records, between ${dateWords(rerunDates[0])} and ${dateWords(rerunDates[rerunDates.length - 1])}. The figures printed are each result's own standing figures, and each result's reading states its chain.`;
-  const total =
-    groups.full.length + groups.slices.length + groups.flagged.length;
-  const countsLine =
-    `The board holds ${fmtInt(total)} results from ${fmtInt(counts.tested)} models. ` +
-    `${fmtInt(counts.ranked)} models are ranked and ${fmtInt(counts.flagged)} are flagged.` +
-    (multi.length === 1
-      ? " One model was measured on two wires, so it appears as two results."
-      : multi.length > 1
-        ? ` ${fmtInt(multi.length)} models were measured on two wires, so each appears as two results.`
-        : "");
-  const data = explorerData();
-
+  const groups = boardGroups();
+  const dates = [...groups.full, ...groups.slices, ...groups.flagged]
+    .map(r => r.rerun?.date).filter((d): d is string => typeof d === "string").sort();
   return (
-    <main className="page">
+    <main className="page study" id="top">
       <VendorSprite />
       <TopBar />
-
-      <section className="hero" id="top" aria-label="The board">
-        <p className="micro">Paired measurement · Benign and attacked</p>
-        <h1>Decision models, measured under attack</h1>
-        <p className="hero-lede">
-          Peira is an adversarial robustness benchmark for AI decision
-          models. Every model decided the same paired cases, each case
-          in a benign form and an attacked form, and Peira measures how
-          often the attacked form flips a right answer.
-        </p>
-        <p className="hero-counts">{countsLine}</p>
-      </section>
-
       <Headline />
-      <Explorer data={data} />
-      <Findings />
+      <ModelGroups observations={groups.full.flatMap(row =>
+        row.asr_conditional === null ? [] : [{ rate: row.asr_conditional, profile: modelProfile(row) }]
+      )} />
+      <StudyFindings />
+      <Explorer data={explorerData()} />
       <MethodStub />
-
-      <footer className="colophon">
-        <p>
-          Dataset {versions.dataset} · Suite {versions.suite} ·{" "}
-          {countsLine} The figures derive from the sealed runs in the
-          payload this page links.
-        </p>
-        {rerunNote !== null && <p>{rerunNote}</p>}
-        <p>
-          The board is rebuilt from the sealed payload on every
-          publish.
-        </p>
+      <footer className="colophon study-footer">
+        <div><b>Peira</b><span>Dataset {versions.dataset} · Suite {versions.suite}</span><a href="/payload.json" download>Download data (JSON)</a></div>
+        {dates.length > 0 && <details><summary>Run history</summary><p>{dates.length} results link to earlier runs. Their records are dated {dateWords(dates[0])}{dates[0] !== dates[dates.length - 1] && ` through ${dateWords(dates[dates.length - 1])}`}. Each result shows its own measurements and run history in the explorer.</p></details>}
       </footer>
     </main>
   );

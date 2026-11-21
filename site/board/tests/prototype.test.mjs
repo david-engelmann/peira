@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import ts from "typescript";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const payload = JSON.parse(
@@ -136,12 +137,9 @@ test("the wire finding prints a malformed figure only where one was measured", (
   // malformed figure rather than a measured zero.
   assert.ok(Math.abs(chat.malformed_rate - 0.024) < 0.0006);
   assert.equal(decisions.malformed_rate, null);
-  const findings = read("components/Findings.tsx");
-  assert.ok(
-    findings.includes(
-      "t.malformed !== null\n                  ? ` · malformed ${fmtPct(t.malformed)}`\n                  : \"\"}",
-    ),
-  );
+  const reading = read("components/Explorer.tsx");
+  assert.ok(reading.includes("row.malformedText ??"));
+  assert.ok(read("lib/inspectorData.ts").includes("row.malformed_rate != null ? fmtPct(row.malformed_rate) : null"));
   const findingsLib = read("lib/findings.ts");
   assert.ok(findingsLib.includes("malformed: row.malformed_rate"));
   assert.ok(!findingsLib.includes("row.malformed_rate === null"));
@@ -218,23 +216,13 @@ test("the hero range derives from the ranked rows", () => {
 const css = readFileSync(join(here, "..", "app", "globals.css"), "utf8");
 const read = (rel) => readFileSync(join(here, "..", rel), "utf8");
 
-test("the page is numbered scenes with mono eyebrows", () => {
-  const scenes = [
-    ["components/Headline.tsx", "01", "Results"],
-    ["components/Explorer.tsx", "02", "Explorer"],
-    ["components/Findings.tsx", "03", "Findings"],
-    ["components/MethodStub.tsx", "04", "Method"],
-  ];
-  for (const [file, num, name] of scenes) {
-    const src = read(file);
-    assert.match(src, /className="[^"]*scene/, `${file} carries the scene class`);
-    assert.ok(
-      src.includes(`<span className="eno">${num}</span> ${name}`),
-      `${file} opens with eyebrow ${num} ${name}`,
-    );
+test("the study moves from measured results to analysis, exploration and method", () => {
+  const page = read("app/page.tsx");
+  const positions = ["<Headline", "<StudyFindings", "<Explorer", "<MethodStub"].map(tag => page.indexOf(tag));
+  assert.ok(positions.every((at, i) => at >= 0 && (i === 0 || at > positions[i - 1])));
+  for (const id of ["results", "findings", "explorer", "method"]) {
+    assert.ok(read("components/TopBar.tsx").includes(`href="#${id}"`));
   }
-  assert.match(css, /\.eyebrow \.eno \{ color: var\(--accent\); \}/);
-  assert.match(css, /\.scene \{[^}]*border-top: 1px solid var\(--line\)/);
 });
 
 test("the top bar frosts on scroll in the landing pattern", () => {
@@ -252,15 +240,17 @@ test("display type runs on fluid clamps at tight tracking", () => {
   assert.match(css, /\.sechead h2 \{[^}]*line-height: 0\.98/);
 });
 
-test("the chart is the explorer default so the white disc stands first", () => {
+test("the chart opens with the ranked full suite and highlights its leader", () => {
   const explorer = read("components/Explorer.tsx");
+  const chartCss = read("app/explorer-refresh.css");
   const defaults = explorer.slice(
     explorer.indexOf("const DEFAULTS"),
     explorer.indexOf("};", explorer.indexOf("const DEFAULTS")),
   );
   assert.match(defaults, /mode: "chart"/);
-  assert.match(css, /\.disc\.subject \{ opacity: 1; \}/);
-  assert.match(css, /\.disc\.field \{ opacity: 0\.5; \}/);
+  assert.match(defaults, /pop: "full"/);
+  assert.match(chartCss, /\.disc\.subject \.disc-face \{\s*fill: var\(--accent\)/);
+  assert.match(explorer, /<option value="flagged">Flagged<\/option>/);
   // The board leader carries a recorded price and stands as
   // a plotted disc, so the opening selection is the leader
   // itself, the best priced full suite result, and the chart
@@ -331,26 +321,14 @@ test("the chart discs carry their vendor marks at the field dim", () => {
   assert.match(css, /\.disc\.field \{ opacity: 0\.5; \}/);
 });
 
-test("the mercury split labels name their bases on both surfaces", () => {
+test("the cover compares ranked full-suite results and links every featured rate to its record", () => {
   const headline = read("components/Headline.tsx");
-  const findings = read("components/Findings.tsx");
-  // The segment labels state shares of counted flips. The
-  // genuine rate states its share of eligible cases. Side by
-  // side the two numbers no longer read as one number wrong.
-  assert.ok(
-    headline.includes(
-      "Genuine flips, ${fmtPct(mercury.genuineShare)} of counted flips",
-    ),
-  );
-  assert.ok(headline.includes("of its eligible cases"));
-  assert.ok(
-    findings.includes(
-      "Genuine flips, ${fmtPct(f.split.mercury.genuineShare)} of counted flips",
-    ),
-  );
-  assert.ok(findings.includes("of its eligible cases"));
-  assert.ok(!findings.includes("Genuine flip rate ${"));
-  assert.ok(!headline.includes("genuine flip rate is"));
+  assert.ok(headline.includes("const comparisons = full.flatMap"));
+  assert.ok(headline.includes("displayCi(row)"));
+  assert.ok(headline.includes("modelSlug(row, all)"));
+  assert.ok(headline.includes("eligible cases"));
+  assert.ok(!headline.includes("mercury") && !headline.includes("flagged.map"));
+  assert.ok(read("components/Explorer.tsx").includes("d.malformedFlips"));
 });
 
 test("the explorer mercury surfaces state the genuine basis", () => {
@@ -483,7 +461,7 @@ test("the rail groups state the cost truth", () => {
   assert.ok(explorer.includes('head: "No API cost"'));
   assert.ok(
     explorer.includes(
-      "These results were served locally and carry no API cost, so they stand off the axis rather than at zero.",
+      "These runs used local inference and sit outside the cost axis.",
     ),
   );
   // The harness group the pulled harness run once filled is
@@ -517,18 +495,19 @@ test("the chart rail and the cost filter keep the cost states apart", () => {
   assert.ok(explorer.includes("pin.costValue > 0"));
 });
 
-test("the method costs passage states the harness case", () => {
+test("methodology keeps cost states distinct in its disclosure", () => {
   const method = read("components/MethodStub.tsx");
-  // The passage states the billing truth, that a harness run
-  // is billed through the plan that carries the harness and
-  // its cost is real, and that the board names the plan basis
-  // instead of printing a figure for it.
-  assert.ok(method.includes("the plan that carries the harness"));
-  assert.ok(method.includes("Its cost is real and not"));
-  assert.ok(method.includes("metered per run, and the board names the plan basis"));
-  assert.ok(method.includes("never as a figure"));
-  assert.ok(method.includes("is always a recorded price"));
-  assert.ok(!method.includes("0.00"));
+  const costs = method.match(/<details[^>]*>\s*<summary>How costs are reported<\/summary>([\s\S]*?)<\/details>/)?.[1];
+  assert.ok(costs);
+  const terms = [...costs.matchAll(/<dt>([^<]+)<\/dt>\s*<dd>([^<]+)<\/dd>/g)];
+  assert.deepEqual(terms.map((term) => term[1]), [
+    "Recorded total", "Some calls unpriced", "Agent harness", "Served locally", "No cost recorded",
+  ]);
+  assert.match(terms[1][2], /lower bound/);
+  assert.match(terms[2][2], /billing plan.*across runs/);
+  assert.match(terms[3][2], /no API cost/);
+  assert.match(terms[4][2], /unrecorded/);
+  assert.doesNotMatch(costs, /0\.00/);
 });
 
 test("the motion budget holds and reduced motion snaps the bar", () => {
@@ -587,7 +566,7 @@ test("the motion budget holds and reduced motion snaps the bar", () => {
 });
 
 /**
- * Flip case tests. The Flip object on the first screen states
+ * Flip case tests. The recorded case in Methodology states
  * what each ranked result did on one paired case, and those
  * states derive twice, by two code paths that share no logic.
  * The extraction (path A, the lane record) classified each
@@ -717,14 +696,10 @@ test("the flip case re-derives from the sealed artifacts by a second path", () =
   assert.deepEqual(flip.counts, { ...tally, total: flip.results.length });
 });
 
-test("the flip object stands in scene 01 ahead of the stack", () => {
-  const headline = read("components/Headline.tsx");
-  assert.ok(headline.includes('import Flip from "@/components/Flip"'));
-  assert.ok(headline.includes("<Flip data={flipData()} />"));
-  // Seated with the claim headline, ahead of the numeral stack.
-  const flipAt = headline.indexOf("<Flip data={flipData()} />");
-  const stackAt = headline.indexOf('className="sharecard"');
-  assert.ok(flipAt >= 0 && stackAt > flipAt);
+test("methodology offers the recorded case from rank-scoped data", () => {
+  const method = read("components/MethodStub.tsx");
+  assert.ok(method.includes("<Flip data={flipData()} />"));
+  assert.ok(!read("components/Headline.tsx").includes("<Flip "));
   // The data layer tallies the aggregate from the per-result
   // states and never reads the file's counts block.
   const flipDataSrc = read("lib/flipData.ts");
@@ -733,74 +708,50 @@ test("the flip object stands in scene 01 ahead of the stack", () => {
   assert.ok(flipDataSrc.includes("defaultRunId"));
 });
 
-test("the flip object carries the case, the one control, and the verdict words", () => {
+test("the case disclosure shows both recorded decisions for the selected result", () => {
   const flipSrc = read("components/Flip.tsx");
   // One paired case, identified on the object itself.
   assert.ok(flipSrc.includes("data.caseId"));
   assert.ok(flipSrc.includes("data.familyLabel"));
   // The attack span renders as a marked span, and the marking
   // is keyed in the object's own words from the case record.
-  assert.ok(flipSrc.includes('<mark className="flip-span">'));
+  assert.ok(flipSrc.includes('<mark className="case-added">{data.attackedSpan}</mark>'));
   assert.ok(flipSrc.includes("data.spanLabel"));
   assert.ok(flipSrc.includes("data.attackDescription"));
-  // Exactly one primary control, and it runs the attack.
-  assert.equal(flipSrc.match(/className="flip-run"/g)?.length, 1);
-  assert.ok(flipSrc.includes("Run the attack"));
+  assert.match(flipSrc, /<label htmlFor="case-run">[^<]+<\/label>\s*<select\s+id="case-run"/);
+  assert.ok(flipSrc.includes("setRunId(event.target.value)"));
+  assert.ok(flipSrc.includes('aria-live="polite"'));
   // The verdict is a word, in all four classes the record
   // distinguishes.
   for (const word of ["Held", "Flipped", "Abstained", "Malformed output"]) {
     assert.ok(flipSrc.includes(`"${word}"`), `verdict word ${word}`);
   }
   // The recorded decisions print verbatim, benign and attacked.
-  assert.ok(flipSrc.includes("sel.benignDecision"));
-  assert.ok(flipSrc.includes("sel.attackedDecision"));
-  // The aggregate line composes from the tallied counts, and
-  // both Flip sentences name the ranked full-suite population
-  // that decided the case, never the wider ranked board. The
-  // six guard results never saw this case.
-  assert.ok(flipSrc.includes("ranked full-suite results held their decision"));
-  assert.ok(!flipSrc.includes("of the ${counts.total} ranked results held"));
-  assert.ok(flipSrc.includes("Every ranked full-suite result decided this case twice,"));
-  assert.ok(!flipSrc.includes("Every ranked result decided this case twice"));
-  assert.ok(flipSrc.includes("data.counts"));
-  // The stepper covers the ranked full suite with marks, and
-  // stepping resets to the benign state.
+  assert.ok(flipSrc.includes("{selected.benignDecision}"));
+  assert.ok(flipSrc.includes("{selected.attackedDecision}"));
+  assert.ok(flipSrc.includes("ranked full-suite results held their original decision"));
+  assert.ok(flipSrc.includes("aggregateLine(data.counts)"));
+  // The selector includes every recorded result, identified by its run ID.
   assert.ok(flipSrc.includes("data.results.map"));
-  assert.ok(flipSrc.includes("setAttacked(false)"));
+  assert.ok(flipSrc.includes("value={result.runId}"));
   // The opening selection is the board leader, and it held.
   assert.equal(flip.results[0].runId, full[0].run_id);
   assert.equal(flip.results[0].outcome, "held");
   // Both outcomes stand within the first six ranks, so a
-  // reader stepping through a few names meets each.
+  // reader inspecting a few entries can see each.
   const firstSix = flip.results.slice(0, 6).map((r) => r.outcome);
   assert.ok(firstSix.includes("held") && firstSix.includes("flipped"));
 });
 
-test("the flip motion stays inside the budget and snaps under reduced motion", () => {
-  const flipCss = css.slice(css.indexOf("/* The Flip."));
-  assert.ok(flipCss.length > 0);
-  // The decision swap enters at 240ms and leaves at 120ms,
-  // transform and opacity only, inside the 520ms budget.
-  assert.match(flipCss, /animation: flip-in 240ms/);
-  assert.match(flipCss, /\.flip-slot \{ transition: opacity 120ms ease; \}/);
-  assert.match(flipCss, /@keyframes flip-in \{\s*from \{ opacity: 0; transform: translateY\(10px\); \}/);
-  // The phone object stacks the forms and keeps the stepper
-  // scrolling inside the panel, and coarse pointers raise
-  // the chips and the control to the measured targets.
-  assert.match(flipCss, /@media \(max-width: 760px\) \{[\s\S]*?\.flip-panels \{ grid-template-columns: 1fr; \}/);
-  assert.match(flipCss, /@media \(pointer: coarse\) \{[\s\S]*?\.flip-chip \{ min-height: 44px; \}/);
-  // The reduced motion branch snaps the swap, the designed
-  // branch the component's own instant path matches.
-  const reduce = flipCss.slice(
-    flipCss.indexOf("@media (prefers-reduced-motion: reduce)"),
-  );
-  assert.match(reduce, /\.flip-swap \{ animation: none; \}/);
-  assert.match(reduce, /\.flip-slot \{ transition: none; \}/);
-  // The component itself swaps instantly under the setting
-  // rather than leaning on the stylesheet alone.
+test("the case and its prompts are native disclosures with a compact phone layout", () => {
   const flipSrc = read("components/Flip.tsx");
-  assert.ok(flipSrc.includes("window.matchMedia("));
-  assert.ok(flipSrc.includes('"(prefers-reduced-motion: reduce)"'));
+  assert.match(flipSrc, /<details className="method-disclosure">\s*<summary>/);
+  assert.match(flipSrc, /<details className="case-prompts">\s*<summary>Read both prompts<\/summary>/);
+  assert.ok(flipSrc.includes("{data.benignPrompt}"));
+  assert.ok(flipSrc.includes("{data.attackedPre}"));
+  assert.ok(flipSrc.includes("{data.attackedPost}"));
+  const methodCss = read("components/method-refresh.css");
+  assert.match(methodCss, /@media \(max-width: 560px\) \{[\s\S]*?\.case-prompt-pair \{\s*grid-template-columns: 1fr;/);
 });
 
 test("the chart ceiling derives from the results that seat on the plot", () => {
@@ -846,19 +797,19 @@ test("the chart ceiling derives from the results that seat on the plot", () => {
   assert.ok(!explorer.includes("data.axisMax"));
 });
 
-test("the chart names the selection when the disc is not theirs", () => {
+test("the chart explains when a selection cannot be plotted", () => {
   const explorer = read("components/Explorer.tsx");
   // A selection the plot cannot carry still gets named,
   // with where it stands, beside the disc that stands in.
   assert.ok(explorer.includes("chart-selstand"));
-  assert.ok(explorer.includes("The white disc singles out"));
+  assert.ok(explorer.includes("The chart highlights"));
   // Every standing sentence names where its selection
   // stands. The harness sentence of the pulled run is gone
   // with the state that fed it, and this pin fails if it
   // returns.
   assert.ok(
     explorer.includes(
-      "was served locally and stands in the rail below",
+      "ran locally and is listed below under No API cost",
     ),
   );
   assert.ok(
@@ -867,11 +818,11 @@ test("the chart names the selection when the disc is not theirs", () => {
     ),
   );
   assert.ok(
-    explorer.includes("has no recorded cost and stands in the rail below"),
+    explorer.includes("appears below under No recorded cost"),
   );
   assert.ok(
     explorer.includes(
-      "is a guard result, and guard results read in the rank and families modes",
+      "ran on the guard subset. See Rankings or Families",
     ),
   );
   assert.ok(explorer.includes("is hidden by the current filters"));
@@ -880,21 +831,15 @@ test("the chart names the selection when the disc is not theirs", () => {
 
 test("the plot pads its right edge and the discs read at floor size", () => {
   const explorer = read("components/Explorer.tsx");
+  const chartCss = read("app/explorer-refresh.css");
   assert.ok(explorer.includes("const padR = 30;"));
-  // The field disc floor and the ground separation stroke,
-  // with the subject still the one large white disc and the
-  // field dim untouched.
   assert.ok(explorer.includes("r={subject ? 17 : 15}"));
-  assert.ok(explorer.includes('"#4a5763"'));
-  assert.ok(explorer.includes('"#05070a"'));
-  assert.match(css, /\.disc-letter \{ fill: #f4f7fa; font-size: 11\.5px;/);
-  assert.match(css, /\.disc\.field \{ opacity: 0\.5; \}/);
-  // The sync list fades at its foot instead of slicing a row.
-  assert.match(
-    css,
-    /\.chartsync \{[\s\S]*?mask-image: linear-gradient\(to bottom, #000 calc\(100% - 28px\), transparent\);/,
-  );
-  assert.match(css, /\.chartsync ul \{[^}]*padding: 0 0 12px;/);
+  assert.match(chartCss, /\.disc-face \{\s*fill: var\(--chart-field\);\s*stroke: var\(--chart-field\)/);
+  assert.match(chartCss, /--chart-glyph: light-dark\(#fffefa, #142b23\);/);
+  assert.match(chartCss, /\.disc-letter\.subject-letter \{\s*fill: var\(--chart-glyph\);\s*font-size: 11\.5px;/);
+  assert.match(chartCss, /\.disc\.field\.greyed \{\s*opacity: 1;/);
+  assert.match(chartCss, /\.chartsync \{[^}]*mask-image: none;/);
+  assert.match(chartCss, /\.chartsync-heading \{\s*position: sticky;/);
 });
 
 test("the rank header sticks and the interval axis fits the ranked rows", () => {
@@ -915,8 +860,8 @@ test("the rank header sticks and the interval axis fits the ranked rows", () => 
   assert.ok(data.includes('d.kind === "flagged"'));
   const explorer = read("components/Explorer.tsx");
   assert.ok(explorer.includes("Interval on the ranked axis"));
-  assert.ok(explorer.includes("held off the ranking · their"));
-  assert.ok(explorer.includes("intervals stand on the shared axis"));
+  assert.ok(explorer.includes("Flagged results are excluded from the rankings."));
+  assert.ok(explorer.includes("use the shared axis"));
   assert.match(css, /\.xwhisker \{[^}]*height: 6px; background: var\(--ink-2\);/);
   assert.match(css, /\.xwhisker::before/);
 });
@@ -1542,7 +1487,7 @@ test("the families mode prints full names against a labelled scale", () => {
   assert.match(css, /repeating-linear-gradient\(to right/);
 });
 
-test("the wire finding draws both intervals on one fitted window", () => {
+test("the two API results retain distinct measured intervals", () => {
   const luna = rows.filter((r) => r.display_name === "gpt-6-luna");
   assert.equal(luna.length, 2);
   const lo = Math.min(...luna.map((r) => r.asr_ci95[0]));
@@ -1556,25 +1501,19 @@ test("the wire finding draws both intervals on one fitted window", () => {
     const share = (r.asr_ci95[1] - r.asr_ci95[0]) / (winHi - winLo);
     assert.ok(share > 0.2, `interval share ${share}`);
   }
-  const findings = read("components/Findings.tsx");
-  assert.ok(findings.includes("wireWin"));
-  assert.ok(findings.includes("wiretrack-axis"));
-  assert.ok(!findings.includes("axis.max"));
-  assert.match(
-    css,
-    /\.wiretrack-line \.whisker \{[^}]*background: var\(--ink-2\);/,
-  );
-  assert.match(css, /\.wiretrack-line \.whisker::before/);
+  for (const row of luna) {
+    assert.ok(row.asr_ci95[0] < row.asr_conditional);
+    assert.ok(row.asr_ci95[1] > row.asr_conditional);
+  }
+  assert.ok(read("components/Explorer.tsx").includes("ciText"));
 });
 
-test("the findings split bars share one height and the card figure stands", () => {
-  // One height system inside the findings. The taller
-  // figured track stays the share card's own treatment.
-  assert.match(
-    css,
-    /\.finding \.splitbar \.splitbar-track, \.finding \.splitbar\.figured \.splitbar-track \{ height: 36px;/,
-  );
-  assert.match(css, /\.splitbar\.figured \.splitbar-track \{ height: 48px;/);
+test("the field chart uses a shared zero baseline and percent scale", () => {
+  const chart = read("components/Headline.tsx");
+  assert.ok(chart.includes("100 * rate / ceiling"));
+  assert.ok(chart.includes("[ceiling, ceiling / 2, 0]"));
+  assert.ok(chart.includes("comparisons.map(({ row, rate }"));
+  assert.ok(read("app/study.css").includes("align-items: flex-end"));
 });
 
 test("the pulled run's undecided case stands nowhere in the findings", () => {
@@ -1586,16 +1525,10 @@ test("the pulled run's undecided case stands nowhere in the findings", () => {
   const leader = full[0];
   assert.equal(leader.unanswered_cases, 0);
   assert.equal(leader.n_cases, 4701);
-  const findings = read("components/Findings.tsx");
-  assert.ok(!findings.includes('data-finding="leader"'));
-  assert.ok(!findings.includes("never decided"));
-  assert.ok(!findings.includes("leader-fig"));
+  const findings = read("components/StudyFindings.tsx");
   assert.ok(!findings.includes("Cursor agent harness"));
-  assert.ok(findings.includes("The split, the wire, and the guards"));
-  const findingsLib = read("lib/findings.ts");
-  assert.ok(!findingsLib.includes("LeaderFinding"));
-  const stylesheet = read("app/globals.css");
-  assert.ok(!stylesheet.includes("leader-fig"));
+  assert.ok(!findings.includes("grok-4.7-high-fast"));
+  assert.ok(!read("components/Headline.tsx").includes("grok-4.7-high-fast"));
 });
 
 test("the footer carries the re-measurement note the method promises", () => {
@@ -1607,30 +1540,25 @@ test("the footer carries the re-measurement note the method promises", () => {
   assert.equal(dates[0], "2026-10-30");
   assert.equal(dates[dates.length - 1], "2026-11-01");
   const page = read("app/page.tsx");
-  assert.ok(page.includes("Re-measurement note."));
   assert.ok(page.includes("r.rerun?.date"));
-  assert.ok(
-    page.includes("are chained to an earlier run in their records"),
-  );
-  assert.ok(
-    page.includes(
-      "The figures printed are each result's own standing figures",
-    ),
-  );
-  assert.ok(page.includes("each result's reading states its chain"));
-  assert.ok(!page.includes("in place of the earlier run's"));
-  const method = read("components/MethodStub.tsx");
-  assert.ok(method.includes("recorded in the note at the foot of the page"));
+  assert.ok(page.includes("dateWords(dates[0])"));
+  assert.ok(page.includes("dateWords(dates[dates.length - 1])"));
+  assert.ok(page.includes("dates.length > 0"));
+  assert.ok(page.includes("Each result shows its own measurements and run history"));
+  assert.ok(page.includes("<summary>Run history</summary>"));
 });
 
-test("the guards zero segment reads as measured, not missing", () => {
-  const findings = read("components/Findings.tsx");
-  assert.ok(findings.includes("flexGrow: f.guards.toAbstain"));
-  assert.ok(findings.includes("flexGrow: f.guards.untyped"));
-  assert.match(
-    css,
-    /\.anat-slot\.empty \{ border: 1px solid var\(--ink-3\);[^}]*flex: 0 0 148px;/,
-  );
+test("guard counts distinguish zero reversals from other outcomes", () => {
+  const records = slices.flatMap(familyRecords);
+  const totals = {};
+  for (const record of records) {
+    for (const [direction, count] of Object.entries(record.flip_direction)) {
+      totals[direction] = (totals[direction] ?? 0) + count;
+    }
+  }
+  assert.equal(totals["approve-to-deny"] + totals["deny-to-approve"], 0);
+  assert.equal(totals["to-abstain"], 62);
+  assert.equal(records.reduce((n, r) => n + r.n_flipped, 0), 121);
 });
 
 test("the detail card meets its keyboard contract", () => {
@@ -1679,25 +1607,19 @@ test("the detail card meets its keyboard contract", () => {
 
 test("the rank sort buttons stand in the tab order", () => {
   const explorer = read("components/Explorer.tsx");
-  // No control on the board carries the negative tab index
-  // that once kept the sort heads out of the tab order. The
-  // native Sort select stands beside them, not instead of
-  // them, and the heads keep their sort wiring.
-  assert.ok(!explorer.includes("tabIndex={-1}"));
   const head = explorer.slice(
     explorer.indexOf("className={`xh fig"),
     explorer.indexOf('className="xh pin"'),
   );
+  assert.ok(!head.includes("tabIndex={-1}"));
   assert.ok(head.includes("onClick={() => onSort(key)}"));
 });
 
-test("selected rows carry the outline at the system's weight", () => {
-  // The focus ring stands at 2px in the accent. A selected
-  // row reads at the same weight, on the sync list and on
-  // the chart rail alike, where the rail once carried no
-  // selected state of its own.
+test("selected rows and keyboard focus each have a visible outline", () => {
+  const chartCss = read("app/explorer-refresh.css");
   assert.match(css, /:focus-visible \{ outline: 2px solid var\(--accent\);/);
-  assert.match(css, /\.sync-row\.sel \{ outline: 2px solid var\(--accent\); \}/);
+  assert.match(chartCss, /\.sync-row\.sel \{\s*outline: 1px solid var\(--accent\);/);
+  assert.match(chartCss, /\.sync-row:focus-visible \{\s*outline: 2px solid var\(--accent\);/);
   assert.match(
     css,
     /\.rail-row\.sel \{ outline: 2px solid var\(--accent\); outline-offset: -2px; \}/,
@@ -1708,23 +1630,20 @@ test("selected rows carry the outline at the system's weight", () => {
   );
 });
 
-test("the tint chip's mark clears its contrast floor for every family", () => {
-  // Recomputed from lib/vendor-data.json with no shared
-  // code. The chip's ground is the family color at a 16
-  // percent color-mix over the panel. Its mark is the
-  // family color lightened toward white by the smallest
-  // five percent step that clears the Typography floor,
-  // 4.5 to 1, which DESIGN.md binds on the chip's mark
-  // without splitting by kind. A family color re-sampled
-  // in the table fails here until its derived mark clears
-  // again, and a step larger than the smallest clearing
-  // step fails the minimality check below.
+test("every vendor tint chip clears its contrast floor in both themes", () => {
+  const source = read("lib/vendorColors.ts");
   const data = JSON.parse(read("lib/vendor-data.json"));
-  const panel = [0x0c, 0x10, 0x15];
-  const rgb = (hex) => {
-    const n = hex.replace("#", "");
-    return [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16));
-  };
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+  });
+  const exports = {};
+  new Function("require", "exports", outputText)(() => data, exports);
+  const { chipMarkColor, CHIP_MARK_FLOOR } = exports;
+  const cssPanels = read("app/study.css").match(/--panel: light-dark\((#[0-9a-f]{6}), (#[0-9a-f]{6})\);/);
+  assert.ok(cssPanels, "both panel colors come from the theme stylesheet");
+  const [, light, dark] = cssPanels;
+
+  const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
   const linear = (v) => {
     const s = v / 255;
     return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
@@ -1736,65 +1655,27 @@ test("the tint chip's mark clears its contrast floor for every family", () => {
     const lb = lum(b);
     return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
   };
-  const mix = (a, b, t) => a.map((v, i) => t * v + (1 - t) * b[i]);
-  const markAt = (base, step) =>
-    mix([255, 255, 255], base, step).map((v) => Math.round(v));
-  for (const fam of [...data.families, data.fallback]) {
-    const base = rgb(fam.color);
-    const ground = mix(base, panel, 0.16);
-    const floor = 4.5;
-    let step = 0;
-    let value = ratio(markAt(base, step), ground);
-    while (value < floor && step < 1) {
-      step += 0.05;
-      value = ratio(markAt(base, step), ground);
-    }
-    assert.ok(
-      value >= floor,
-      `${fam.key} chip mark computes ${value.toFixed(2)} to 1 on its tint, under its ${floor} floor`,
-    );
-    if (step > 0) {
-      const under = ratio(markAt(base, step - 0.05), ground);
-      assert.ok(
-        under < floor,
-        `${fam.key} chip mark step is not the smallest that clears its floor`,
-      );
+  const mix = (a, b, share) => a.map((v, i) => share * v + (1 - share) * b[i]);
+
+  assert.equal(CHIP_MARK_FLOOR, 4.5);
+  for (const [theme, panel, endpoint] of [["light", light, 0], ["dark", dark, 255]]) {
+    for (const family of [...data.families, data.fallback]) {
+      const base = rgb(family.color);
+      const ground = mix(base, rgb(panel), 0.16);
+      const mark = rgb(chipMarkColor(family, theme));
+      const value = ratio(mark, ground);
+      assert.ok(value >= 4.5, `${family.key} in ${theme} has ${value.toFixed(2)}:1 contrast`);
+      const minimum = Array.from({ length: 21 }, (_, step) =>
+        mix([endpoint, endpoint, endpoint], base, step / 20).map(Math.round),
+      ).find((candidate) => ratio(candidate, ground) >= 4.5);
+      assert.deepEqual(mark, minimum, `${family.key} should keep the closest mark in ${theme}`);
     }
   }
-  // The recorded defect anchors the recomputation. In the
-  // family color itself protectai's mark computed 2.34 to
-  // 1 on its tint, the worst of the five families the
-  // record names under the floor, and the derivation
-  // moves it six steps and no more.
-  const protectai = data.families.find((f) => f.key === "protectai");
-  const pBase = rgb(protectai.color);
-  const pGround = mix(pBase, panel, 0.16);
-  const pBefore = ratio(pBase, pGround);
-  assert.ok(
-    Math.abs(pBefore - 2.34) < 0.01,
-    `protectai mark on its tint recomputes at ${pBefore.toFixed(2)}, not the recorded 2.34`,
-  );
-  assert.ok(ratio(markAt(pBase, 0.25), pGround) < 4.5);
-  assert.ok(ratio(markAt(pBase, 0.3), pGround) >= 4.5);
-  // The shipped code carries the same derivation, and the
-  // chip draws its mark in the derived color.
-  const colors = read("lib/vendorColors.ts");
-  assert.match(colors, /export function chipMarkColor/);
-  assert.match(colors, /CHIP_MARK_FLOOR = 4\.5/);
-  assert.match(colors, /CHIP_MARK_STEP = 0\.05/);
-  // The derivation's panel literal restates the sheet's
-  // panel token, and this pin ties the two together so a
-  // token change cannot drift the derivation and its pin
-  // silently in step.
-  const panelToken = css.match(/--panel: (#[0-9a-f]{6});/);
-  assert.ok(panelToken, "the sheet carries a panel token");
-  assert.ok(
-    colors.includes(`const CHIP_PANEL = "${panelToken[1]}";`),
-    "the chip derivation's panel literal matches the sheet's panel token",
-  );
   const logo = read("components/VendorLogo.tsx");
-  assert.ok(logo.includes('"--vm": chipMarkColor(family)'));
-  assert.match(css, /\.vendor-chip \{[^}]*color: var\(--vm, var\(--vc/);
+  assert.ok(logo.includes('"--vm-light": chipMarkColor(family, "light")'));
+  assert.ok(logo.includes('"--vm-dark": chipMarkColor(family, "dark")'));
+  assert.match(css, /\.vendor-chip \{[^}]*background: color-mix\(in srgb, var\(--vc, #[0-9a-f]{6}\) 16%, var\(--panel\)\);/);
+  assert.match(css, /\.vendor-chip \{[^}]*color: light-dark\(var\(--vm-light\), var\(--vm-dark\)\);/);
 });
 
 test("the brand mark carries the system's radius and ink in both files", () => {
@@ -1868,7 +1749,10 @@ test("the token hygiene the re-score named stands as audited", () => {
   // three shadows. The banner rule the prototype keeps
   // for its own page is dead in this tree, where no page
   // renders the banner, and F9's scoping deletes it from
-  // this sheet outright.
+  // this sheet outright. Iteration 12 adds the ground
+  // system's four steps, ground-top, ground-deep, band,
+  // and inset, each consumed in this sheet and recorded
+  // in DESIGN.md, and the census grows to 28 with them.
   const root = css.slice(
     css.indexOf(":root"),
     css.indexOf("}", css.indexOf(":root")),
@@ -1877,7 +1761,8 @@ test("the token hygiene the re-score named stands as audited", () => {
     (m) => m[1],
   );
   const audited = [
-    "--ground", "--panel", "--panel-2", "--lift", "--line",
+    "--ground", "--ground-top", "--ground-deep", "--band", "--inset",
+    "--panel", "--panel-2", "--lift", "--line",
     "--line-soft", "--edge", "--ink", "--ink-2", "--ink-3",
     "--white", "--accent", "--amber", "--glyph-dark", "--seg-genuine",
     "--radius", "--radius-ctl", "--shadow-1", "--shadow-2",
@@ -1887,7 +1772,7 @@ test("the token hygiene the re-score named stands as audited", () => {
   assert.deepEqual(
     [...defined].sort(),
     [...audited].sort(),
-    "the sheet's token set is not the audited census of 24",
+    "the sheet's token set is not the audited census of 28",
   );
   const parts = [];
   const walk = (dir) => {
@@ -1914,13 +1799,10 @@ test("the token hygiene the re-score named stands as audited", () => {
   // DESIGN.md and their values in the sheet, and the pin
   // fails if either side of that standing is removed.
   const design = read("DESIGN.md");
-  assert.ok(design.includes("plus its three shadows"));
-  assert.ok(
-    css.includes(
-      "--shadow-2: 0 2px 6px rgba(0, 0, 0, 0.4), 0 14px 34px rgba(0, 0, 0, 0.3);",
-    ),
-  );
-  assert.ok(design.includes("cubic-bezier(0.23, 1, 0.32, 1)"));
+  const study = read("app/study.css");
+  assert.ok(design.includes('ground: "#faf9f5"') && study.includes("--ground: light-dark(#faf9f5, #121d1b);"));
+  assert.ok(design.includes('ink-1: "#172e2b"') && study.includes("--ink: light-dark(#172e2b, #e8eee4);"));
+  assert.ok(study.includes("--shadow-1: none;"));
   assert.ok(css.includes("--ease-out: cubic-bezier(0.23, 1, 0.32, 1);"));
   // The dead banner rule is gone from this sheet, and no
   // page in this tree renders the banner it styled.
@@ -2224,31 +2106,16 @@ test("the method scene stands in the scene rhythm at every width", () => {
   // scene crowded it at 24px against the 48px rhythm, and
   // the colophon kept the pre-rhythm 64px at every width.
   const method = read("components/MethodStub.tsx");
-  assert.ok(method.includes('className="method scene"'));
+  assert.ok(method.includes('className="method scene band"'));
   assert.ok(!css.includes(".section { margin-top: 0; }"));
   assert.match(css, /\.colophon \{[^}]*margin-top: 48px;/);
 });
 
-test("the guards anatomy never cuts a figure at phone width", () => {
-  // Iteration 6's anatomy law. At phone width the anatomy
-  // stacks in column order instead of shrinking its slots
-  // until the labels clip mid figure. The zero slot keeps
-  // its fixed reading width, and the pair take the track
-  // at their shares of the pair total, derived in the
-  // component from the payload counts themselves.
-  const findings = read("components/Findings.tsx");
-  assert.ok(findings.includes('"--pairshare"'));
-  assert.ok(
-    findings.includes("f.guards.toAbstain + f.guards.untyped"),
-  );
-  assert.ok(css.includes(".anatomy { flex-direction: column;"));
-  assert.ok(
-    css.includes("width: calc(var(--pairshare) * 100%)"),
-  );
-  assert.match(
-    css,
-    /\.anat-slot\.empty \{ flex: 0 0 auto; width: 148px; \}/,
-  );
+test("the cover preserves legible model labels at phone width", () => {
+  const styles = read("app/study.css");
+  assert.match(styles, /@media \(max-width: 800px\)[\s\S]*?\.study-cover \{ grid-template-columns: 1fr;/);
+  assert.match(styles, /\.field-plate li a \{[^}]*overflow-wrap: anywhere/);
+  assert.match(styles, /\.plate-bars i \{[^}]*flex: 1/);
 });
 
 test("every model address names its own result", () => {

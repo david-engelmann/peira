@@ -2,15 +2,15 @@
  * Chart derivations for the round 9 chart suite (scatter,
  * heatmap, calibration). Layout facts only: populations, column
  * orderings, label placements, colour ramps. Every printed
- * number still comes straight from a payload field through
- * lib/format; nothing here recomputes a metric. The one
+ * number comes from a payload field or its matching counts
+ * through lib/format. The one
  * statistic computed is the family mean attack success used to
  * ORDER heatmap columns, which is the design spec's standing
  * ordering rule and is printed nowhere.
  */
 
 import type { BoardRow } from "@/lib/payload";
-import { isSliceRow, fullCaseCount } from "@/lib/payload";
+import { displayCountCi, displayCountRate, isSliceRow, fullCaseCount } from "@/lib/payload";
 import { fmtPctCell } from "@/lib/format";
 
 /* ---------------- typed detail access ---------------- */
@@ -37,8 +37,8 @@ function pairOrNull(x: unknown): [number, number] | null {
   if (
     Array.isArray(x) &&
     x.length === 2 &&
-    typeof x[0] === "number" &&
-    typeof x[1] === "number"
+    Number.isFinite(x[0]) &&
+    Number.isFinite(x[1])
   ) {
     return [x[0], x[1]];
   }
@@ -58,8 +58,8 @@ export function familiesOf(row: BoardRow): Map<string, FamilyStat> {
     }
     const f = value as Record<string, unknown>;
     out.set(key, {
-      asr: numOrNull(f.asr),
-      asrCi95: pairOrNull(f.asr_ci95),
+      asr: displayCountRate(numOrNull(f.asr), f.n_flipped, f.n_eligible),
+      asrCi95: displayCountCi(pairOrNull(f.asr_ci95), f.n_flipped, f.n_eligible),
       nEligible: numOrNull(f.n_eligible),
       nCostedCalls: numOrNull(f.n_costed_calls),
       nLatencyCalls: numOrNull(f.n_latency_calls),

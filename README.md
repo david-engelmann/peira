@@ -1,19 +1,31 @@
-# peira
+# Peira
 
-peira is an open-source AI safety benchmark that measures whether hostile input can flip a decision model's typed output.
+Peira measures how often an AI model changes a correct decision when the same case comes back with adversarial input. Each run pairs the original and altered prompts, then records the decisions, uncertainty and serving cost.
 
 [![ci](https://github.com/david-engelmann/peira/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/peira/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT%20%2F%20CC--BY--4.0-blue.svg)](LICENSE)
 
 [Docs](docs/Overview.md) · [Methodology](docs/Methodology.md) · [Adapters](docs/Adapters.md) · [Contributing](docs/Contributing.md) · [Discussions](https://github.com/david-engelmann/peira/discussions)
 
-> Accuracy benchmarks tell you whether a model decides well on clean input. peira tells you whether an attacker can change the decision. Every attack ships with a benign twin, so a flipped decision is evidence about the attack, not noise.
-
-[![The Peira board: the two ends of the cost story, a near-free run that held and the priciest run, each with its attack success and cost per run](.github/social-preview.png)](https://peiratrial.dev/)
+<a href="https://peiratrial.dev/">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/board/overview-dark.webp">
+    <img src=".github/board/overview-light.webp" alt="Peira’s benchmark overview, with the distribution of attack success across full-suite runs and the three lowest observed rates with their confidence intervals.">
+  </picture>
+</a>
 
 ## Live results
 
-**The board is live at [peiratrial.dev](https://peiratrial.dev/)** and is the source of truth for current standings. It publishes 39 sealed results covering 38 distinct models on the v2 dataset. Thirty-four distinct models are ranked and four are flagged under the published admission rules. On the full suite, attack success runs from 10.7% to 28.5%. Attack success counts a case only when the benign answer was right and the attacked side answered wrong, abstained, or produced malformed output. Every result is published with attack success rates and confidence intervals, benign accuracy, calibration, and per-family breakdowns. Cost is published where the run recorded it.
+The November 18, 2026 release covers **4,701 paired cases** and **41 ranked full-suite results**. The same case can contribute once per run. Fabricated retrieved documents accounted for **41.0% of counted flips** across those runs and **9.9% of eligible cases**. [Explore the attack families](https://peiratrial.dev/#findings)
+
+The explorer keeps each model and its interface visible. GPT-6 Luna, for example, ran through both a typed Decisions API and Chat Completions. Compare the two results on the same cases, inspect their intervals, or filter for specialists, local inference and downloadable weights. Guard models have a separate ranking on the abstention subset. [Open the explorer](https://peiratrial.dev/#explorer) · [Read the scoring method](https://peiratrial.dev/#method)
+
+<a href="https://peiratrial.dev/#explorer?pop=full&amp;mode=chart&amp;kind=general&amp;serving=hosted">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/board/explorer-dark.webp">
+    <img src=".github/board/explorer-light.webp" alt="Hosted general-purpose models in the explorer. Each point shows one full-suite run’s attack success and recorded serving cost. The list links each point to its run record.">
+  </picture>
+</a>
 
 ## Contents
 
