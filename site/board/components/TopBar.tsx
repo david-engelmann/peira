@@ -35,11 +35,11 @@ export default function TopBar() {
         <span className="brand-name">peira</span>
       </a>
       <nav className="mastnav" aria-label="Page">
-        <a href="#results">Results</a>
+        <a href="#results">Overview</a>
+        <a href="#findings">Analysis</a>
         <a href="#explorer">Explorer</a>
-        <a href="#findings">Findings</a>
         <a className="mastnav-tail" href="#method">Method</a>
-        <a className="mastnav-tail" href="/payload.json">Payload</a>
+        <a className="mastnav-tail" href="/payload.json">Data</a>
       </nav>
       <details className="mastmore">
         <summary>More</summary>
@@ -51,7 +51,7 @@ export default function TopBar() {
           }}
         >
           <a href="#method">Method</a>
-          <a href="/payload.json">Payload</a>
+          <a href="/payload.json">Data</a>
         </div>
       </details>
     </header>

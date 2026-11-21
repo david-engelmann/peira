@@ -1,165 +1,82 @@
 import {
-  boardGroups,
-  displayCi,
-  flipDecomposition,
-  shortName,
-  splitDisplayName,
-  type BoardRow,
+  boardDateWords, boardGroups, displayCi, duplicateShortNames, flipDecomposition,
+  modelCounts, modelSlug, shortName, wireWords,
 } from "@/lib/payload";
 import { fmtCi, fmtInt, fmtPct } from "@/lib/format";
-import { findingsData } from "@/lib/findings";
-import VendorLogo from "@/components/VendorLogo";
-import SplitBar from "@/components/SplitBar";
-import Flip from "@/components/Flip";
-import { flipData } from "@/lib/flipData";
-
-/**
- * The headline results, standing immediately under the hero.
- * The Flip stands first, one paired case the reader runs
- * against any ranked result, seated with the claim headline
- * ahead of the stack. The share card's numeral stack follows:
- * the leader, the flagged lead with its split stated, and the
- * last ranked result, each as one large tabular numeral in the
- * share card's grammar of label, name, figure, and caption,
- * with the flagged lead's malformed share carried large inside
- * its split bar. The leader cards, the spread across every
- * ranked full suite result, and the price result in its
- * restrained form stand under the stack. Every figure derives
- * from the payload through the same data layer the rest of the
- * page reads.
- */
-
-function fullName(row: BoardRow): string {
-  return splitDisplayName(row.display_name).name;
-}
 
 export default function Headline() {
-  const full = boardGroups().full;
-  const leaders = full.slice(0, 3);
-  const best = full[0];
-  const worst = full[full.length - 1];
-  const f = findingsData();
-  const price = f.price;
-  const mercury = f.split.mercury;
-  const corrText = `${price.correlation < 0 ? "−" : ""}${Math.abs(price.correlation).toFixed(2)}`;
-  const bestCi = displayCi(best);
-  const worstCi = displayCi(worst);
-  const bestDecomp = flipDecomposition(best);
-
+  const { full, fullCases, slices, flagged } = boardGroups();
+  const all = [...full, ...slices, ...flagged];
+  const comparisons = full.flatMap(row =>
+    row.asr_conditional === null ? [] : [{ row, rate: row.asr_conditional }]
+  );
+  const best = comparisons[0];
+  const flips = best ? flipDecomposition(best.row) : null;
+  const featured = comparisons.slice(0, 3);
+  const intervals = featured.flatMap(({ row }) => {
+    const ci = displayCi(row);
+    return ci ? [ci] : [];
+  });
+  const overlapping = featured.length > 1 && intervals.length === featured.length &&
+    Math.max(...intervals.map(ci => ci[0])) <= Math.min(...intervals.map(ci => ci[1]));
+  const duplicates = duplicateShortNames(all);
+  const ceiling = Math.max(0.1, Math.ceil(Math.max(0, ...comparisons.map(d => d.rate)) * 10) / 10);
   return (
-    <section className="headline scene" aria-label="Headline results" id="results">
-      <div className="sechead">
-        <div className="micro eyebrow">
-          <span className="eno">01</span> Results
-        </div>
-        <h2>
-          The leader stands at {fmtPct(best.asr_conditional as number)},
-          the flagged lead at {fmtPct(mercury.counted)}, the last
-          ranked at {fmtPct(worst.asr_conditional as number)}
-        </h2>
-        <p className="cap">
-          Three figures carry the board, in the share card's
-          grammar. Lower is better on the ranked board.
+    <section className="study-cover" id="results" aria-labelledby="study-title">
+      <div className="cover-copy">
+        <p className="study-kicker">Decision robustness benchmark</p>
+        <h1 id="study-title">Which models <em>hold up</em> under attack?</h1>
+        <p className="study-intro">
+          Peira tests each decision twice, first as written and then with adversarial input.
+          {best && flips && (
+            <> Even the lowest observed attack success rate was {fmtPct(best.rate)},
+              with {fmtInt(flips.flips)} failures in {fmtInt(best.row.n_eligible)} eligible cases.</>
+          )}
         </p>
-      </div>
-
-      <Flip data={flipData()} />
-
-      <div className="sharecard">
-        <div className="stack-entry">
-          <p className="micro">
-            Rank 1 of {fmtInt(full.length)} · the full suite
-          </p>
-          <p className="stack-name">
-            <VendorLogo row={best} size="card" /> {fullName(best)}
-          </p>
-          <p className="stack-num">{fmtPct(best.asr_conditional as number)}</p>
-          <p className="stack-cap">
-            Attack success
-            {bestCi ? `, interval ${fmtCi(bestCi)}` : ""}.
-            {bestDecomp
-              ? bestDecomp.malformedFlips === 0
-                ? ` None of its ${fmtInt(bestDecomp.flips)} counted flips went to malformed output.`
-                : ` ${fmtInt(bestDecomp.malformedFlips)} of its ${fmtInt(bestDecomp.flips)} counted flips went to malformed output.`
-              : ""}
-          </p>
+        <div className="cover-links">
+          <a href="#explorer">Explore the results <span aria-hidden="true">↗</span></a>
+          <a href="#method">How we measure</a>
         </div>
-
-        <div className="stack-entry">
-          <p className="micro amber-text">Flagged · off the scale</p>
-          <p className="stack-name">
-            <VendorLogo row={mercury.row} size="card" />{" "}
-            {fullName(mercury.row)}
-          </p>
-          <p className="stack-num">{fmtPct(mercury.counted)}</p>
-          <SplitBar
-            bare
-            figuredInBar
-            label=""
-            figured=""
-            malformedShare={mercury.malformedShare}
-            malformedLabel={`Malformed output, ${fmtPct(mercury.malformedShare)} of counted flips`}
-            genuineLabel={`Genuine flips, ${fmtPct(mercury.genuineShare)} of counted flips`}
-          />
-          <p className="stack-cap">
-            Counted attack success. Of its {fmtInt(mercury.flips)}{" "}
-            counted flips, {fmtInt(mercury.malformedFlips)} went to
-            malformed output, and its genuine flips are{" "}
-            {fmtPct(mercury.genuineRate)} of its eligible cases.
-          </p>
-        </div>
-
-        <div className="stack-entry">
-          <p className="micro">
-            Rank {fmtInt(full.length)} of {fmtInt(full.length)} · the
-            full suite
-          </p>
-          <p className="stack-name">
-            <VendorLogo row={worst} size="card" /> {fullName(worst)}
-          </p>
-          <p className="stack-num">
-            {fmtPct(worst.asr_conditional as number)}
-          </p>
-          <p className="stack-cap">
-            Attack success
-            {worstCi ? `, interval ${fmtCi(worstCi)}` : ""}. The
-            highest counted rate on the ranked board.
-          </p>
-        </div>
+        <dl className="study-facts">
+          <div><dt>Paired cases</dt><dd>{fmtInt(fullCases)}</dd></div>
+          <div><dt>Models tested</dt><dd>{fmtInt(modelCounts().tested)}</dd></div>
+        </dl>
       </div>
-
-      <div className="leaders">
-        {leaders.map((row, i) => {
-          const ci = displayCi(row);
-          return (
-            <article className="leader-card" key={row.run_id}>
-              <p className="micro">Rank {i + 1}</p>
-              <p className="leader-name">
-                <VendorLogo row={row} size="card" /> {shortName(row)}
-              </p>
-              <p className="leader-rate">
-                {fmtPct(row.asr_conditional as number)}
-              </p>
-              <p className="leader-ci">
-                Attack success
-                {ci ? `, interval ${fmtCi(ci)}` : ""}
-              </p>
-            </article>
-          );
-        })}
-      </div>
-      <p className="headline-line">
-        Across all {fmtInt(full.length)} ranked full suite results,
-        attack success runs from {fmtPct(best.asr_conditional as number)}{" "}
-        for {shortName(best)} to {fmtPct(worst.asr_conditional as number)}{" "}
-        for {shortName(worst)}.
-      </p>
-      <p className="headline-line">
-        Price does not predict robustness. Across the{" "}
-        {fmtInt(price.pricedCount)} priced ranked results, the rank
-        correlation between price and attack success is {corrText}, no
-        useful relationship.
-      </p>
+      {best && <figure className="field-plate">
+        <div className="plate-dateline"><span>Full suite</span><time>{boardDateWords()}</time></div>
+        <h2>Attack success across the field</h2>
+        <p>Each bar shows one of {comparisons.length} ranked full-suite results. Lower is better.</p>
+        <div className="plate-graph" role="img" aria-label={`Attack success across ${comparisons.length} ranked full-suite results ranges from ${fmtPct(best.rate)} to ${fmtPct(comparisons[comparisons.length - 1].rate)} of eligible cases.`}>
+          <div className="plate-bars">
+            {comparisons.map(({ row, rate }, index) => (
+              <i key={row.run_id} className={index < featured.length ? "highlight" : undefined}
+                style={{ height: `${100 * rate / ceiling}%` }} />
+            ))}
+          </div>
+          <div className="plate-axis">
+            {[ceiling, ceiling / 2, 0].map(tick => (
+              <span key={tick}>{Math.round(tick * 100)}%</span>
+            ))}
+          </div>
+        </div>
+        <div className="plate-key"><span>Lowest observed rates</span><span>95% interval</span></div>
+        <ol>
+          {featured.map(({ row, rate }) => {
+            const ci = displayCi(row);
+            const name = shortName(row);
+            return (
+              <li key={row.run_id}>
+                <a href={`#result=${encodeURIComponent(modelSlug(row, all))}`}>
+                  {name}{duplicates.has(name) && ` · ${wireWords(row.wire)}`}
+                </a>
+                <strong>{fmtPct(rate)}</strong>
+                <span>{ci ? fmtCi(ci) : "Unavailable"}</span>
+              </li>
+            );
+          })}
+        </ol>
+        <figcaption>Rates use each result’s eligible cases.{overlapping && " The intervals for these results overlap."}</figcaption>
+      </figure>}
     </section>
   );
 }

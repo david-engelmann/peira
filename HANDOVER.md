@@ -6,7 +6,11 @@ This document hands the Peira leaderboard website to a new agent. It states what
 
 Peira measures how decision models behave under attack. Every model decided the same paired cases, each case in a benign form and an attacked form, and the board publishes the results. The website is a static Next.js app in `site/board` in this repo. Production is https://peiratrial.dev. The data is `site/board/data/payload.json`, generated from sealed run artifacts by the Python package in this repo (see The data, below).
 
-## Current state, 2026-11-19
+## Prototype review update, 2026-11-20
+
+David rejected iteration 12. The revised prototype leads with the ranked distribution and two analyses. See `site/board/PRODUCT.md` and `site/board/DESIGN.md` for the current direction. The iteration 12 descriptions below document the previous prototype. Production publication still requires David’s review.
+
+## Iteration 12 state, 2026-11-19
 
 Production is this repo's `main` branch. It serves 52 results, 47 of them ranked, with the payload at md5 90ccb68ebcf975fb36fdc32d76df6a1b. The board on main is the version David rejected on 2026-11-19. Its background is plain black, it carries walls of prose, and it does not display all the data Peira holds.
 

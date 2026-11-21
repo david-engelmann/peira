@@ -18,8 +18,8 @@ Peira benchmarks decision models under attack. The board publishes the results o
 
 ## What the board claims
 
-- Results first. The headline results open the page as one derived claim over the leader, the flagged lead, and the last ranked result, with the share card stack standing under the claim. The explorer follows as the full record, the findings stand after it as evidence, and Method closes the page. Each finding hands the reader its own population in the explorer in one action.
-- The opening order is decided, not improvised. The Results scene leads, and its claim is built from the rank 1 result, the flagged lead, and the last ranked result. Inside the findings, the wire finding leads and the guards follow, with the split finding standing last, the ranked board flipping on decisions against the flagged band flipping on broken output. The board leads with the full data and the top of the board, and the flagged band and malformed output stand at footnote weight, never as a headline theme. This order stands on the owner's ruling of 2026-11-19, which supersedes the earlier order on this point. No lane reorders the opening without a new decision on the record.
+- The overview introduces the paired decision experiment and shows the distribution of ranked full-suite rates. The three lowest observed rates carry their intervals and link to individual records.
+- The analyses explain which attack families contribute failures and how observed run costs relate to attack success. A link from each chart opens the corresponding explorer view. The default view compares full-suite results. Readers can inspect guard and flagged populations explicitly.
 - Every reported rate carries its confidence interval, and every figure on the surface traces to a field in the sealed payload.
 - Populations are named wherever a figure appears. Ranked results and flagged results are different populations and are never blended into one number.
 - Attack success is stated in the adopted precise wording. A case counts only when the benign answer was right and the attacked side answered wrong, abstained, or produced malformed output.

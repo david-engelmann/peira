@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /* Prototype capture. Serves the static export in ../out,
  * captures the three audited widths (1440, 1280, 390), the
- * explorer mid scroll, and an open reading, and prints
- * computed style evidence that the ground system is live.
+ * explorer mid scroll, and an open reading, and both analytical figures.
  *
  * Env:
  *   PUPPETEER_EXECUTABLE_PATH  path to a Chromium or Chrome
@@ -69,75 +68,57 @@ const shot = async (name, opts = {}) => {
   console.log("shot", name);
 };
 const settle = (ms = 900) => new Promise((r) => setTimeout(r, ms));
+// Leave room for both the masthead and the sticky ranking header.
+const recordInset = 140;
+const scrollToExplorer = async () => {
+  await page.$eval("#explorer", (el) => el.scrollIntoView({ block: "start" }));
+  await settle(500);
+};
+const openRankedReading = async () => {
+  await page.goto(`${base}/#explorer?pop=all&mode=rank&sort=asr`, { waitUntil: "networkidle0" });
+  await settle();
+  await scrollToExplorer();
+  await page.$eval(".xrow-head", (el) => el.click());
+  const reading = await page.waitForSelector(".reading.open", { visible: true });
+  await settle();
+  return reading;
+};
 
 // Desktop 1440
 await page.setViewport({ width: 1440, height: 1000 });
 await page.goto(`${base}/`, { waitUntil: "networkidle0" });
 await settle();
-const evidence = await page.evaluate(() => {
-  const cs = getComputedStyle(document.body);
-  const band = document.querySelector(".scene.band");
-  const wrap = document.querySelector(".chartwrap");
-  const finding = document.querySelector(".finding");
-  return {
-    bodyBackgroundImage: cs.backgroundImage.slice(0, 160),
-    bodyBackgroundColor: cs.backgroundColor,
-    bandClass: band ? band.className : null,
-    chartwrapBackground: wrap ? getComputedStyle(wrap).backgroundColor : null,
-    findingShadow: finding ? getComputedStyle(finding).boxShadow.slice(0, 120) : null,
-    h1: document.querySelector("h1")?.textContent ?? null,
-  };
-});
-console.log("EVIDENCE", JSON.stringify(evidence, null, 2));
 await shot("w1440-top.png");
 await shot("w1440-full.png", { fullPage: true });
+for (const [id, name] of [["study-families-heading", "families"], ["study-cost-heading", "cost"]]) {
+  await page.$eval(`#${id}`, (el) => window.scrollBy({ top: el.getBoundingClientRect().top - 110, behavior: "instant" }));
+  await shot(`w1440-${name}.png`);
+}
 
 // Explorer band mid scroll at 1440
-await page.evaluate(() => {
-  document.querySelector("#explorer")?.scrollIntoView({ block: "start" });
-});
-await settle(500);
+await scrollToExplorer();
 await shot("w1440-explorer.png");
 
 // Reading open at 1440 in rank mode
-await page.goto(`${base}/#explorer?pop=all&mode=rank&sort=asr`, { waitUntil: "networkidle0" });
-await settle();
-await page.evaluate(() => {
-  document.querySelector("#explorer")?.scrollIntoView({ block: "start" });
-});
-await settle(400);
-const clicked = await page.evaluate(() => {
-  const head = document.querySelector(".xrow-head");
-  if (!head) return false;
-  head.click();
-  return true;
-});
-console.log("row clicked:", clicked);
-await settle(1200);
-const readingInfo = await page.evaluate(() => {
-  const r = document.querySelector(".reading.open") ?? document.querySelector(".belowreading .reading");
-  if (!r) return null;
+const desktopReading = await openRankedReading();
+const readingInfo = await desktopReading.evaluate((r) => {
   const rect = r.getBoundingClientRect();
   return { top: rect.top + window.scrollY, height: rect.height, text: r.textContent.slice(0, 120) };
 });
 console.log("READING", JSON.stringify(readingInfo));
-if (readingInfo) {
-  await page.evaluate((y) => window.scrollTo(0, Math.max(0, y - 70)), readingInfo.top);
+await page.evaluate((top, inset) => window.scrollTo(0, Math.max(0, top - inset)), readingInfo.top, recordInset);
+await settle(500);
+await shot("w1440-reading.png");
+const famY = await page.evaluate(() => {
+  const heads = [...document.querySelectorAll(".rdata-head")];
+  const fam = heads.find((h) => h.textContent.includes("Attack families"));
+  return fam ? fam.getBoundingClientRect().top + window.scrollY : null;
+});
+console.log("families block y:", famY);
+if (famY !== null) {
+  await page.evaluate((top, inset) => window.scrollTo(0, Math.max(0, top - inset)), famY, recordInset);
   await settle(500);
-  await shot("w1440-reading.png");
-  const famY = await page.evaluate(() => {
-    const heads = [...document.querySelectorAll(".rdata-head")];
-    const fam = heads.find((h) => h.textContent.includes("Attack families"));
-    if (!fam) return null;
-    const y = fam.getBoundingClientRect().top + window.scrollY;
-    return y;
-  });
-  console.log("families block y:", famY);
-  if (famY !== null) {
-    await page.evaluate((y) => window.scrollTo(0, Math.max(0, y - 90)), famY);
-    await settle(500);
-    await shot("w1440-record.png");
-  }
+  await shot("w1440-record.png");
 }
 
 // Laptop 1280
@@ -146,6 +127,12 @@ await page.goto(`${base}/`, { waitUntil: "networkidle0" });
 await settle();
 await shot("w1280-top.png");
 await shot("w1280-full.png", { fullPage: true });
+await scrollToExplorer();
+await shot("w1280-explorer.png");
+const laptopReading = await openRankedReading();
+await laptopReading.evaluate((r, inset) => window.scrollBy(0, r.getBoundingClientRect().top - inset), recordInset);
+await settle(500);
+await shot("w1280-reading.png");
 
 // Phone 390
 await page.setViewport({ width: 390, height: 844, hasTouch: true, isMobile: true });
@@ -153,21 +140,12 @@ await page.goto(`${base}/`, { waitUntil: "networkidle0" });
 await settle();
 await shot("w390-top.png");
 await shot("w390-full.png", { fullPage: true });
+await scrollToExplorer();
+await shot("w390-explorer.png");
 
 // Phone reading as the bottom sheet
-await page.goto(`${base}/#explorer?pop=all&mode=rank&sort=asr`, { waitUntil: "networkidle0" });
-await settle();
-await page.evaluate(() => {
-  document.querySelector("#explorer")?.scrollIntoView({ block: "start" });
-});
-await settle(400);
-await page.evaluate(() => {
-  document.querySelector(".xrow-head")?.click();
-});
-await settle(1200);
-const sheetInfo = await page.evaluate(() => {
-  const r = document.querySelector(".reading.open");
-  if (!r) return null;
+const phoneReading = await openRankedReading();
+const sheetInfo = await phoneReading.evaluate((r) => {
   const rect = r.getBoundingClientRect();
   return { top: rect.top, height: rect.height, position: getComputedStyle(r).position };
 });

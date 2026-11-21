@@ -5,19 +5,7 @@ peiratrial.dev. It is a Next.js static export in React, with
 charts on visx and hand-rolled SVG. It renders one payload
 and nothing else.
 
-The page is built as numbered scenes in the design
-language of the Maidan landing. The hero states what Peira
-is and the headline results follow at once. The explorer
-stands as the full record. Every result stands there as a
-row that expands in place into its reading, with rank,
-chart, and families views of the same rows, a population
-filter for the ranked results, the guard slices, and the
-flagged band, and a pin that holds two readings side by side
-for comparison. The findings stand after the explorer as
-evidence, each claim derived from the payload. Method
-follows in its diet form, stating each rule of the
-measurement once, in general terms. Per-result facts live
-on the readings, never in Method.
+The overview shows attack success across all ranked full-suite results. The analysis compares attack families and measured run costs. Readers can follow each chart into the explorer, inspect individual results, and compare two runs. Guard subsets and flagged runs remain available through population filters. Method includes the scoring rules and an inspectable paired case.
 
 Every number on the page derives from the payload at build
 time. Nothing is recomputed by hand and nothing is edited
@@ -31,6 +19,8 @@ needs Node 22 or newer and a Chromium for the share images.
 The generator and audit scripts look in the Playwright
 browser cache and honor `PUPPETEER_EXECUTABLE_PATH` or
 `CHROME_PATH` when set.
+
+For a prototype deployment, set `BOARD_PUBLIC_ORIGIN` to the public prototype origin before building so shared links load its preview image. The default origin is production.
 
 The prebuild regenerates the share images from the payload
 and copies the payload beside them, and the build then
@@ -50,7 +40,7 @@ the sources, the cost truth labels among them.
 
 ## Where the data comes from
 
-The only data file is `data/payload.json`. The pipeline
+The summary data is in `data/payload.json` and the recorded paired example is in `data/flipcase.json`. The pipeline
 generates it from sealed run artifacts, and a publish
 replaces it wholesale. The copy committed here is the
 currently published payload, kept so the board builds from

@@ -1,6 +1,6 @@
 # Report 85. Iteration 12. The ground, the prose, and the full record
 
-Status. Interim note, banked while the first build window is awaited. Front 1 and the largest Front 2 cuts are built in the prototype tree and the board suite stands green on them. Front 3 is built in the same tree. The prototype deploy, the three width screenshot set, and the full gate set follow in the completion section once a build window opens on this box.
+Status. Interim note, banked while the first build window is awaited. Front 1 and the major Front 2 cuts are built in the prototype tree and the board suite stands green on them. Front 3 is built in the same tree. The prototype deploy, the three width screenshot set, and the full gate set follow in the completion section once a build window opens on this box.
 
 ## The ruling this iteration answers
 

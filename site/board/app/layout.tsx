@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./study.css";
+import "./explorer-refresh.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://peiratrial.dev"),
-  title: "Peira decision robustness board",
+  metadataBase: new URL(process.env.BOARD_PUBLIC_ORIGIN ?? "https://peiratrial.dev"),
+  title: "Peira | Decision robustness benchmark",
   description:
-    "Attack success rates for decision models on paired benign and attacked cases, with 95 percent intervals, tie brackets, and flagged results. Results first, the explorer as the full record, the findings as evidence.",
+    "Compare AI decisions before and after an attack. Explore model rankings, attack families, run costs and the evidence behind each result.",
 };
 
 export default function RootLayout({
