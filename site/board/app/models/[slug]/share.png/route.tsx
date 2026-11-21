@@ -16,7 +16,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const result = resultShare(slug);
   if (!result) return new Response(null, { status: 404 });
 
-  const { row, scope, standing, decomposition, dataset, suite } = result;
+  const { row, scope, standing, interval, decomposition, dataset, suite } = result;
   const flagged = row.kind === "flagged";
   const nameSize = row.fullName.length > 36 ? 48 : 66;
   return new ImageResponse(
@@ -35,7 +35,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
               {row.asrText ?? "Unavailable"}
             </span>
             <span style={{ fontSize: 24, marginTop: 8 }}>{row.asrLabel}</span>
-            {row.asrText !== null && <span style={{ fontSize: 21, color: cardColors.quiet, marginTop: 5 }}>{`${fmtInt(row.nEligible)} eligible cases`}</span>}
+            {row.asrText !== null && (
+              <span style={{ fontSize: 21, color: cardColors.quiet, marginTop: 5 }}>
+                {`${fmtInt(row.nEligible)} eligible cases${interval ? ` · ${interval}` : ""}`}
+              </span>
+            )}
           </div>
           <div style={{ display: "flex", flexDirection: "column", flex: 1, borderLeft: `1px solid ${cardColors.rule}`, paddingLeft: 44 }}>
             <span style={{ fontSize: row.benignText === null ? 44 : 70, fontWeight: 700, lineHeight: 1.02 }}>

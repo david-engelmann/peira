@@ -18,11 +18,12 @@ export function resultShare(slug: string) {
   const name = row.wire ? `${row.fullName} · ${row.wire}` : row.fullName;
   const scope = row.nCases === fullCases ? "full suite" : "guardrail subset";
   const standing = row.kind === "flagged" ? "Flagged · not ranked" : row.rankLine;
+  const interval = row.asrText !== null && row.ciText !== null ? `95% CI ${row.ciText}` : null;
   const attackDetail = row.asrText === null
     ? "Attack success unavailable."
-    : `${row.asrText} ${row.asrLabel.toLowerCase()} across ${fmtInt(row.nEligible)} eligible cases.`;
+    : `${row.asrText} ${row.asrLabel.toLowerCase()} across ${fmtInt(row.nEligible)} eligible cases${interval ? ` (${interval})` : ""}.`;
   const decomposition = row.kind === "flagged" && row.decomp
     ? `Genuine flips: ${fmtPct(row.decomp.genuineRate)} of eligible cases. Malformed output: ${fmtPct(row.decomp.malformedShare)} of counted flips.`
     : null;
-  return { row, name, scope, standing, attackDetail, decomposition, dataset, suite };
+  return { row, name, scope, standing, attackDetail, interval, decomposition, dataset, suite };
 }

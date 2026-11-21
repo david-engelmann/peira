@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import ts from "typescript";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const payload = JSON.parse(
@@ -1629,23 +1630,20 @@ test("selected rows and keyboard focus each have a visible outline", () => {
   );
 });
 
-test("the tint chip's mark clears its contrast floor for every family", () => {
-  // Recomputed from lib/vendor-data.json with no shared
-  // code. The chip's ground is the family color at a 16
-  // percent color-mix over the panel. Its mark is the
-  // family color lightened toward white by the smallest
-  // five percent step that clears the Typography floor,
-  // 4.5 to 1, which DESIGN.md binds on the chip's mark
-  // without splitting by kind. A family color re-sampled
-  // in the table fails here until its derived mark clears
-  // again, and a step larger than the smallest clearing
-  // step fails the minimality check below.
+test("every vendor tint chip clears its contrast floor in both themes", () => {
+  const source = read("lib/vendorColors.ts");
   const data = JSON.parse(read("lib/vendor-data.json"));
-  const panel = [0x0c, 0x10, 0x15];
-  const rgb = (hex) => {
-    const n = hex.replace("#", "");
-    return [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16));
-  };
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+  });
+  const exports = {};
+  new Function("require", "exports", outputText)(() => data, exports);
+  const { chipMarkColor, CHIP_MARK_FLOOR } = exports;
+  const cssPanels = read("app/study.css").match(/--panel: light-dark\((#[0-9a-f]{6}), (#[0-9a-f]{6})\);/);
+  assert.ok(cssPanels, "both panel colors come from the theme stylesheet");
+  const [, light, dark] = cssPanels;
+
+  const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
   const linear = (v) => {
     const s = v / 255;
     return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
@@ -1657,65 +1655,27 @@ test("the tint chip's mark clears its contrast floor for every family", () => {
     const lb = lum(b);
     return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
   };
-  const mix = (a, b, t) => a.map((v, i) => t * v + (1 - t) * b[i]);
-  const markAt = (base, step) =>
-    mix([255, 255, 255], base, step).map((v) => Math.round(v));
-  for (const fam of [...data.families, data.fallback]) {
-    const base = rgb(fam.color);
-    const ground = mix(base, panel, 0.16);
-    const floor = 4.5;
-    let step = 0;
-    let value = ratio(markAt(base, step), ground);
-    while (value < floor && step < 1) {
-      step += 0.05;
-      value = ratio(markAt(base, step), ground);
-    }
-    assert.ok(
-      value >= floor,
-      `${fam.key} chip mark computes ${value.toFixed(2)} to 1 on its tint, under its ${floor} floor`,
-    );
-    if (step > 0) {
-      const under = ratio(markAt(base, step - 0.05), ground);
-      assert.ok(
-        under < floor,
-        `${fam.key} chip mark step is not the smallest that clears its floor`,
-      );
+  const mix = (a, b, share) => a.map((v, i) => share * v + (1 - share) * b[i]);
+
+  assert.equal(CHIP_MARK_FLOOR, 4.5);
+  for (const [theme, panel, endpoint] of [["light", light, 0], ["dark", dark, 255]]) {
+    for (const family of [...data.families, data.fallback]) {
+      const base = rgb(family.color);
+      const ground = mix(base, rgb(panel), 0.16);
+      const mark = rgb(chipMarkColor(family, theme));
+      const value = ratio(mark, ground);
+      assert.ok(value >= 4.5, `${family.key} in ${theme} has ${value.toFixed(2)}:1 contrast`);
+      const minimum = Array.from({ length: 21 }, (_, step) =>
+        mix([endpoint, endpoint, endpoint], base, step / 20).map(Math.round),
+      ).find((candidate) => ratio(candidate, ground) >= 4.5);
+      assert.deepEqual(mark, minimum, `${family.key} should keep the closest mark in ${theme}`);
     }
   }
-  // The recorded defect anchors the recomputation. In the
-  // family color itself protectai's mark computed 2.34 to
-  // 1 on its tint, the worst of the five families the
-  // record names under the floor, and the derivation
-  // moves it six steps and no more.
-  const protectai = data.families.find((f) => f.key === "protectai");
-  const pBase = rgb(protectai.color);
-  const pGround = mix(pBase, panel, 0.16);
-  const pBefore = ratio(pBase, pGround);
-  assert.ok(
-    Math.abs(pBefore - 2.34) < 0.01,
-    `protectai mark on its tint recomputes at ${pBefore.toFixed(2)}, not the recorded 2.34`,
-  );
-  assert.ok(ratio(markAt(pBase, 0.25), pGround) < 4.5);
-  assert.ok(ratio(markAt(pBase, 0.3), pGround) >= 4.5);
-  // The shipped code carries the same derivation, and the
-  // chip draws its mark in the derived color.
-  const colors = read("lib/vendorColors.ts");
-  assert.match(colors, /export function chipMarkColor/);
-  assert.match(colors, /CHIP_MARK_FLOOR = 4\.5/);
-  assert.match(colors, /CHIP_MARK_STEP = 0\.05/);
-  // The derivation's panel literal restates the sheet's
-  // panel token, and this pin ties the two together so a
-  // token change cannot drift the derivation and its pin
-  // silently in step.
-  const panelToken = css.match(/--panel: (#[0-9a-f]{6});/);
-  assert.ok(panelToken, "the sheet carries a panel token");
-  assert.ok(
-    colors.includes(`const CHIP_PANEL = "${panelToken[1]}";`),
-    "the chip derivation's panel literal matches the sheet's panel token",
-  );
   const logo = read("components/VendorLogo.tsx");
-  assert.ok(logo.includes('"--vm": chipMarkColor(family)'));
-  assert.match(css, /\.vendor-chip \{[^}]*color: var\(--vm, var\(--vc/);
+  assert.ok(logo.includes('"--vm-light": chipMarkColor(family, "light")'));
+  assert.ok(logo.includes('"--vm-dark": chipMarkColor(family, "dark")'));
+  assert.match(css, /\.vendor-chip \{[^}]*background: color-mix\(in srgb, var\(--vc, #[0-9a-f]{6}\) 16%, var\(--panel\)\);/);
+  assert.match(css, /\.vendor-chip \{[^}]*color: light-dark\(var\(--vm-light\), var\(--vm-dark\)\);/);
 });
 
 test("the brand mark carries the system's radius and ink in both files", () => {

@@ -154,6 +154,7 @@ export interface XFamilyDetail {
   full: string;
   asrText: string | null;
   ciText: string | null;
+  decompText: string | null;
   countsText: string | null;
   directionsText: string | null;
   metaText: string | null;
@@ -229,14 +230,17 @@ function familyDetailOf(
   row: BoardRow,
   famOrder: string[],
   stats: ReturnType<typeof familiesOf>,
+  splits: ReturnType<typeof familyFlipDecomposition>,
 ): XFamilyDetail[] {
   const fams = recOrEmpty(recOrEmpty(row.detail).families);
   const out: XFamilyDetail[] = [];
   for (const key of famOrder) {
     const f = recOrEmpty(fams[key]);
     if (Object.keys(f).length === 0) continue;
-    const asr = stats.get(key)?.asr ?? null;
-    const ci = stats.get(key)?.asrCi95 ?? null;
+    const stat = stats.get(key);
+    const asr = stat?.asr ?? null;
+    const ci = stat?.asrCi95 ?? null;
+    const split = splits.get(key);
     const n = numOrNull(f.n);
     const nFlipped = numOrNull(f.n_flipped);
     const nEligible = numOrNull(f.n_eligible);
@@ -254,7 +258,14 @@ function familyDetailOf(
     }
     const meta: string[] = [];
     const cost = numOrNull(f.cost_usd);
-    if (cost !== null && cost > 0) meta.push(fmtUsdExact(cost));
+    const costedCalls = stat?.nCostedCalls ?? null;
+    if (cost !== null && cost > 0) {
+      const totalCalls = n === null ? null : 2 * n;
+      const costText = fmtUsdExact(cost);
+      meta.push(costedCalls !== null && totalCalls !== null && costedCalls < totalCalls
+        ? `${costText} (lower bound, ${fmtInt(costedCalls)} of ${fmtInt(totalCalls)} calls priced)`
+        : costText);
+    }
     const latMean = numOrNull(f.latency_ms_mean);
     if (latMean !== null) meta.push(`mean latency ${fmtMs(latMean)}`);
     const refusal = numOrNull(f.refusal_rate);
@@ -264,6 +275,7 @@ function familyDetailOf(
       full: familyFullName(key),
       asrText: asr !== null ? fmtPct(asr) : null,
       ciText: ci !== null ? fmtCi(ci) : null,
+      decompText: asr !== null && split ? familyDecompText(split) : null,
       countsText: counts.length > 0 ? counts.join(" · ") : null,
       directionsText: dirParts.length > 0 ? dirParts.join(" · ") : null,
       metaText: meta.length > 0 ? meta.join(" · ") : null,
@@ -455,14 +467,14 @@ function runFactsOf(row: BoardRow): XRecord["runFacts"] {
   const errB = numOrNull(top.error_on_benign_cases);
   const errA = numOrNull(top.error_on_attacked_cases);
   push(
-    "Calls with errors",
+    "Cases with exactly one unanswered call",
     errB !== null || errA !== null
       ? `benign ${errB !== null ? fmtInt(errB) : "·"} · attacked ${errA !== null ? fmtInt(errA) : "·"}`
       : null,
   );
   const unanswered = numOrNull(top.unanswered_cases);
   push(
-    "Unanswered cases",
+    "Cases with neither call answered",
     unanswered !== null ? fmtInt(unanswered) : null,
   );
   return facts;
@@ -604,7 +616,7 @@ function shapeRow(
           },
     provenanceLine: provParts.join(" · "),
     record: {
-      families: familyDetailOf(row, famOrder, fams),
+      families: familyDetailOf(row, famOrder, fams, famDecomp),
       severities: severityDetailOf(row, severities),
       calibration: calibrationDetailOf(row),
       runFacts: runFactsOf(row),

@@ -218,7 +218,7 @@ for (const dimension of ["kind", "interface", "serving", "weights", "tier"]) {
     if (rates.some(rate => rate == null) || ids.some(id => seen.has(id))) fail(`Unexpected cohort membership for ${link}`);
     ids.forEach(id => seen.add(id));
     const middle = (rates[Math.floor((rates.length - 1) / 2)] + rates[Math.floor(rates.length / 2)]) / 2;
-    if (Math.abs(100 * middle - median) > 0.05001) fail(`Incorrect median for ${link}`);
+    if (!Number.isFinite(median) || !Number.isFinite(middle) || Math.abs(100 * middle - median) > 0.05001) fail(`Incorrect median for ${link}`);
   }
   if (seen.size !== fullRates.size) fail(`Incomplete full-suite coverage for ${dimension}`);
 }
@@ -258,6 +258,21 @@ const setMode = async (targetPage, label) => {
     document.querySelector('.explorer-views button[aria-pressed="true"]')?.textContent.trim() === text, label);
 };
 const setPopulation = (targetPage, pop) => targetPage.select("#explorer-pop", pop);
+
+const chartReadingOpener = await page.$(".sync-row.sel");
+await chartReadingOpener.focus();
+await page.keyboard.press("Enter");
+await waitFor(page, () => document.activeElement?.classList.contains("belowreading"));
+if (!(await page.evaluate(() => document.activeElement?.classList.contains("belowreading")))) {
+  fail("keyboard activation did not focus the chart reading");
+}
+await page.focus(".chart-reading-head button");
+await page.keyboard.press("Enter");
+await waitFor(page, () => !document.querySelector(".belowreading"));
+if (!(await chartReadingOpener.evaluate(el => document.activeElement === el))) {
+  fail("closing the chart reading did not restore the opener's focus");
+} else pass("keyboard opening and closing chart details returns focus to the result");
+
 await setMode(page, "Rankings");
 
 /* The rank header's labels stand over their columns. Each
@@ -396,27 +411,28 @@ const discCount = await page.evaluate(() => {
 });
 if (discCount === 0) fail("chart mode draws no discs");
 else pass(`chart mode draws ${discCount} discs`);
+await page.mouse.move(0, 0);
+if (chartEl) await settleOn(chartEl);
 const hover = await page.evaluate(() => {
   for (const disc of document.querySelectorAll("svg.chart .disc-face")) {
     const r = disc.getBoundingClientRect();
     const x = r.x + r.width / 2;
     const y = r.y + r.height / 2;
-    if (document.elementFromPoint(x, y) === disc) return { x, y };
+    if (document.elementFromPoint(x, y) === disc) return { x, y, id: disc.closest("[data-disc]").dataset.disc };
   }
   return null;
 });
 if (hover) {
-  await page.mouse.move(0, 0);
   await page.mouse.move(hover.x, hover.y);
-  await new Promise((r) => setTimeout(r, 350));
+  await waitFor(page, () => document.querySelector(".chip") && document.querySelector(".chartsync .hot"));
   const lit = await page.evaluate(() => {
     return {
       chip: document.querySelector(".chip") !== null,
       hot: document.querySelector(".chartsync .hot, .sync-row.hot") !== null,
     };
   });
-  if (!lit.chip) fail("chart hover raises no reading chip");
-  if (!lit.hot) fail("chart hover does not light the same result in the list");
+  if (!lit.chip) fail(`chart hover on ${hover.id} raises no reading chip`);
+  if (!lit.hot) fail(`chart hover on ${hover.id} does not light the result in the list`);
   if (lit.chip && lit.hot) pass("chart hover cross-highlights the list row");
 } else {
   fail("the chart exposes no visible disc center to hover");
@@ -520,6 +536,23 @@ await waitFor(page, (total) => {
   const m = /([\d,]+) of/.exec(t);
   return m !== null && Number(m[1].replace(/,/g, "")) === total;
 }, full.length);
+if (chartEl) {
+  await chartEl.evaluate(svg => svg.scrollIntoView({ behavior: "instant", block: "center" }));
+  const bounds = await chartEl.boundingBox();
+  const beforeResize = await chartEl.evaluate(svg => svg.viewBox.baseVal.width);
+  await page.mouse.move(bounds.x + 0.3 * bounds.width, bounds.y + 0.3 * bounds.height);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + 0.55 * bounds.width, bounds.y + 0.6 * bounds.height);
+  await page.waitForSelector(".brush-rect");
+  await page.setViewport({ width: 1024, height: 950 });
+  await page.waitForFunction(width => document.querySelector("svg.chart")?.viewBox.baseVal.width !== width, {}, beforeResize);
+  const dragCanceled = !await page.$(".brush-rect");
+  await page.mouse.up();
+  if (!dragCanceled || await page.$(".brush-clear")) {
+    fail("resizing the chart during a drag left a stale brush or applied a filter");
+  } else pass("resizing the chart cancels an in-progress area selection");
+  await page.setViewport({ width: 1280, height: 950 });
+}
 await setMode(page, "Families");
 await page.waitForSelector(".xfamrow", { timeout: 10000 }).catch(() => null);
 const famGroupNames = async () => {
@@ -534,7 +567,11 @@ const famKeys = [
 ];
 const famRate = (r, key) => {
   const rec = r.detail?.families?.[key];
-  return rec && typeof rec.asr === "number" ? rec.asr : null;
+  if (!rec || typeof rec.asr !== "number") return null;
+  const { n_flipped: hits, n_eligible: eligible } = rec;
+  if (!Number.isInteger(hits) || !Number.isInteger(eligible) || eligible <= 0 || hits < 0 || hits > eligible) return rec.asr;
+  const exact = hits / eligible;
+  return Math.round(exact * 10000) === Math.round(rec.asr * 10000) ? exact : rec.asr;
 };
 const famExpected = (key) =>
   [...full]
@@ -627,12 +664,41 @@ for (const [row, pop] of [[leader, "full"], [slices[0], "guards"], [payload.unra
   if (deep.pop !== pop || !deep.open || !deep.named) {
     fail(`model address ${slug} did not open its reading in the ${pop} results`);
   } else pass(`model address ${slug} opens its reading in the ${pop} results`);
+  if (pop === "full") {
+    await page.focus(".chart-reading-head button");
+    await page.keyboard.press("Enter");
+    await waitFor(page, () => document.activeElement?.matches(".sync-row.sel"));
+    if (!(await page.evaluate(() => document.activeElement?.matches(".sync-row.sel")))) {
+      fail("closing a permalink's chart reading did not focus the selected result");
+    } else pass("a chart reading opened from a permalink returns focus to the selected result");
+  }
 }
 await page.goto(`${base}/#explorer?mode=rank`, { waitUntil: "networkidle0" });
 await waitFor(page, () => document.querySelector("#explorer-pop")?.value === "all");
 const legacyCount = await page.$$eval(".xrow", (results) => results.length);
 if (legacyCount !== rows.length) fail("a legacy Explorer link lost the original All results scope");
 else pass("a legacy Explorer link keeps the original All results scope");
+const vendorSelect = '#explorer select:has(option[value="google"])';
+await page.goto(`${base}/#explorer?pop=full&vendor=google`, { waitUntil: "networkidle0" });
+await page.waitForSelector(".sync-row.sel");
+if (!(await page.$eval(".sync-row.sel", el => el.textContent.includes("gemini-4-argon")))) {
+  fail("a legacy Explorer link without sel did not select the default opener");
+}
+await page.select(vendorSelect, "all");
+const alternate = await page.$eval(".sync-row:not(.sel)", el => {
+  el.click();
+  return el.textContent;
+});
+await page.select(vendorSelect, "google");
+await waitFor(page, () => new URLSearchParams(location.hash.split("?")[1]).get("sel") === "");
+await page.reload({ waitUntil: "networkidle0" });
+const restored = await page.evaluate(() => {
+  const params = new URLSearchParams(location.hash.split("?")[1]);
+  return params.get("vendor") === "google" && params.get("sel") === "" &&
+    Boolean(document.querySelector(".sync-row")) && !document.querySelector(".sync-row.sel, .belowreading");
+});
+if (!restored) fail(`reloading a filter that excluded ${alternate} restored a selection`);
+else pass("an explicitly cleared chart selection survives a reload with the default opener visible");
 
 /* Model profile filters preserve the board's ranks and combine in every view. */
 const openFrontierRuns = full.filter((r) =>
@@ -678,7 +744,7 @@ await page.select("#explorer-serving", "local");
 await waitFor(page, () => location.hash.includes("serving=local"));
 const hiddenSelection = await page.evaluate(() => {
   const params = new URLSearchParams(location.hash.split("?")[1]);
-  return params.get("serving") === "local" && !["sel", "pin", "open"].some((key) => params.has(key)) &&
+  return params.get("serving") === "local" && params.get("sel") === "" && !params.has("pin") && !params.has("open") &&
     !document.querySelector(".belowreading, .tray, .footstrip-name");
 });
 if (!hiddenSelection) fail("filters retain a hidden selected reading or pin in the view or URL");

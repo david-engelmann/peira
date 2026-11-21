@@ -9,12 +9,8 @@ import { chipMarkColor, vendorFamilyOf } from "@/lib/vendorColors";
  * for the systems that publish no mark. The family color is
  * the same hue the charts use for the model, so identity
  * reads consistently across the board. The mark itself is
- * drawn in the derived chip mark color from lib/vendorColors,
- * the family color lightened toward white only as far as
- * the chip's contrast floor asks, so a dark family color
- * stays legible on its own tint. The chip is decorative
- * beside the model name, which already names the result; the
- * vendor rides along as the accessible label.
+ * drawn in the derived chip mark color for the current
+ * theme. The vendor is available as its accessible label.
  */
 export default function VendorLogo({
   row,
@@ -27,7 +23,8 @@ export default function VendorLogo({
   const family = vendorFamilyOf(row);
   const style = {
     "--vc": family.color,
-    "--vm": chipMarkColor(family),
+    "--vm-light": chipMarkColor(family, "light"),
+    "--vm-dark": chipMarkColor(family, "dark"),
   } as CSSProperties;
   return (
     <span

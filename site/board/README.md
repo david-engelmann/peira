@@ -13,7 +13,7 @@ into the markup. A model address, `/models/<slug>/`, hands
 off to that result's reading in the explorer. Each reading has
 a permanent link with its own share preview.
 
-The README shows the interface in both color schemes. After a build, run `node scripts/capture-prototype.mjs --readme` with `PUPPETEER_EXECUTABLE_PATH` pointing to Chrome to refresh the overview, the explorer images and the repository social preview. GitHub serves the repository preview from its Settings upload. The live board and result pages serve their own generated cards.
+The README shows the interface in both color schemes. After a build, run `node scripts/capture-prototype.mjs --readme` with `PUPPETEER_EXECUTABLE_PATH` pointing to Chrome to refresh the overview, the explorer images and the repository social preview. Upload the generated `.github/social-preview.png` under the repository’s Settings, in Social preview. The live board and result pages serve their own generated cards.
 
 ## Building
 

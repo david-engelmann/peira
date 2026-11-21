@@ -4,6 +4,12 @@ import {
 } from "@/lib/payload";
 import { fmtCi, fmtInt, fmtPct } from "@/lib/format";
 
+function malformedShareText(flips: ReturnType<typeof flipDecomposition>): string | null {
+  return flips && flips.malformedShare > 0.5
+    ? `${fmtPct(flips.malformedShare)} of counted flips went to malformed output`
+    : null;
+}
+
 export default function Headline() {
   const { full, fullCases, slices, flagged } = boardGroups();
   const all = [...full, ...slices, ...flagged];
@@ -12,6 +18,9 @@ export default function Headline() {
   );
   const best = comparisons[0];
   const flips = best ? flipDecomposition(best.row) : null;
+  const bestMalformedShare = malformedShareText(flips);
+  const worst = comparisons.at(-1);
+  const worstMalformedShare = worst ? malformedShareText(flipDecomposition(worst.row)) : null;
   const featured = comparisons.slice(0, 3);
   const intervals = featured.flatMap(({ row }) => {
     const ci = displayCi(row);
@@ -30,7 +39,8 @@ export default function Headline() {
           Peira tests each decision twice, first as written and then with adversarial input.
           {best && flips && (
             <> Among ranked full-suite runs, the lowest observed attack success rate was {fmtPct(best.rate)},
-              with {fmtInt(flips.flips)} failures in {fmtInt(best.row.n_eligible)} eligible cases.</>
+              with {fmtInt(flips.flips)} {bestMalformedShare ? "counted flips" : "failures"} in {fmtInt(best.row.n_eligible)} eligible cases.
+              {bestMalformedShare && ` ${bestMalformedShare}.`}</>
           )}
         </p>
         <div className="cover-links">
@@ -42,11 +52,11 @@ export default function Headline() {
           <div><dt>Models tested</dt><dd>{fmtInt(modelCounts().tested)}</dd></div>
         </dl>
       </div>
-      {best && <figure className="field-plate">
+      {best && worst && <figure className="field-plate">
         <div className="plate-dateline"><span>Full suite</span><time>{boardDateWords()}</time></div>
         <h2>Attack success across the field</h2>
         <p>Each bar shows one of {comparisons.length} ranked full-suite results. Lower is better.</p>
-        <div className="plate-graph" role="img" aria-label={`Attack success across ${comparisons.length} ranked full-suite results ranges from ${fmtPct(best.rate)} to ${fmtPct(comparisons[comparisons.length - 1].rate)} of eligible cases.`}>
+        <div className="plate-graph" role="img" aria-label={`Attack success across ${comparisons.length} ranked full-suite results ranges from ${fmtPct(best.rate)}${bestMalformedShare ? ` (${bestMalformedShare})` : ""} to ${fmtPct(worst.rate)}${worstMalformedShare ? ` (${worstMalformedShare})` : ""} of eligible cases.`}>
           <div className="plate-bars">
             {comparisons.map(({ row, rate }, index) => (
               <i key={row.run_id} className={index < featured.length ? "highlight" : undefined}
@@ -64,12 +74,13 @@ export default function Headline() {
           {featured.map(({ row, rate }) => {
             const ci = displayCi(row);
             const name = shortName(row);
+            const malformedShare = malformedShareText(flipDecomposition(row));
             return (
               <li key={row.run_id}>
                 <a href={`#result=${encodeURIComponent(modelSlug(row, all))}`}>
                   {name}{duplicates.has(name) && ` · ${wireWords(row.wire)}`}
                 </a>
-                <strong>{fmtPct(rate)}</strong>
+                <strong>{fmtPct(rate)}{malformedShare && <span> · {malformedShare}</span>}</strong>
                 <span>{ci ? fmtCi(ci) : "Unavailable"}</span>
               </li>
             );

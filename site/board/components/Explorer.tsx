@@ -107,16 +107,19 @@ function decompLine(row: XRow): string | null {
   return `${fmtInt(d.flips)} counted flips · ${fmtInt(d.malformedFlips)} to malformed output · genuine flips ${fmtPct(d.genuineRate)} of ${fmtInt(row.nEligible)} eligible cases`;
 }
 
-function CalArm({ arm, label }: { arm: XCalArm; label: string }) {
+export function CalArm({ arm, label }: { arm: XCalArm; label: string }) {
   const figs: string[] = [];
   if (arm.eceText !== null) figs.push(`ECE ${arm.eceText}`);
   if (arm.brierText !== null) figs.push(`Brier ${arm.brierText}`);
-  if (figs.length === 0 && arm.bins.length === 0) return null;
+  if (figs.length === 0 && arm.bins.length === 0 &&
+      arm.coverageText === null && arm.murphyText === null) {
+    return null;
+  }
   return (
     <div className="drow">
       <div className="drow-top">
         <span className="drow-name">{label}</span>
-        <span className="drow-main">{figs.join(" · ")}</span>
+        {figs.length > 0 && <span className="drow-main">{figs.join(" · ")}</span>}
       </div>
       {arm.coverageText && <p className="drow-sub">{arm.coverageText}</p>}
       {arm.murphyText && <p className="drow-sub">{arm.murphyText}</p>}
@@ -246,6 +249,7 @@ function ReadingBody({ row }: { row: XRow }) {
                   ) : null}
                 </span>
               </div>
+              {f.decompText && <p className="drow-sub">{f.decompText}</p>}
               {f.countsText && <p className="drow-sub">{f.countsText}</p>}
               {f.directionsText && (
                 <p className="drow-sub">{f.directionsText}</p>
@@ -504,6 +508,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
   const flipSnapshot = useRef<Map<string, number> | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
   const readingRef = useRef<HTMLDivElement>(null);
+  const readingOpenerRef = useRef<HTMLButtonElement | null>(null);
   const revealReading = useRef(false);
   const [explorerLive, setExplorerLive] = useState(false);
 
@@ -577,8 +582,11 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     }
     const q = params.get("q");
     if (q !== null) patch.q = q;
+    // A missing key keeps the legacy opener. An empty value clears it.
     const selSlug = params.get("sel");
-    if (selSlug) {
+    if (selSlug === "") {
+      patch.sel = null;
+    } else if (selSlug !== null) {
       const row = bySlug.get(selSlug);
       if (row) patch.sel = row.runId;
     }
@@ -601,6 +609,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       const { patch, open } = parseHash();
       if (Object.keys(patch).length === 0) return;
       touched.current = false;
+      readingOpenerRef.current = null;
       setState((s) => ({ ...s, ...patch }));
       setExpanded(open && patch.sel ? patch.sel : null);
       setHoverId(null);
@@ -727,7 +736,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       if (state[dimension] !== "all") params.set(dimension, state[dimension]);
     }
     if (state.q) params.set("q", state.q);
-    if (chartSelection) params.set("sel", chartSelection.slug);
+    params.set("sel", chartSelection?.slug ?? "");
     if (urlPin) params.set("pin", urlPin.slug);
     if (chartSelection && expandedRow?.runId === chartSelection.runId) params.set("open", "1");
     if (state.frontier) params.set("frontier", "1");
@@ -738,9 +747,10 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     }
   }, [state, chartSelection, urlPin, expandedRow]);
 
-  const openReading = (runId: string) => {
+  const openReading = (runId: string, opener: HTMLButtonElement) => {
     touched.current = true;
     if (state.mode === "chart") {
+      readingOpenerRef.current = opener;
       if (expanded === runId) {
         if (readingRef.current) {
           readingRef.current.focus({ preventScroll: true });
@@ -751,6 +761,19 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       }
     }
     setExpanded(runId);
+  };
+
+  const closeChartReading = () => {
+    touched.current = true;
+    setExpanded(null);
+    const opener = readingOpenerRef.current;
+    readingOpenerRef.current = null;
+    const results = sectionRef.current?.querySelector(".chartsync");
+    const target = opener?.isConnected
+      ? opener
+      : results?.querySelector<HTMLButtonElement>(".sync-row.sel") ??
+        results?.querySelector<HTMLButtonElement>(".sync-row");
+    target?.focus();
   };
 
   useEffect(() => {
@@ -981,9 +1004,9 @@ export default function Explorer({ data }: { data: ExplorerData }) {
           setHoverId={setHoverId}
           chipId={chipId}
           setChipId={setChipId}
-          onSelect={(row, reveal) => {
+          onSelect={(row, opener) => {
             update({ sel: row.runId });
-            if (reveal) openReading(row.runId);
+            if (opener) openReading(row.runId, opener);
           }}
           onBrush={(b) => setBrush(b)}
         />
@@ -1008,10 +1031,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
             <div className="reading open">
               <div className="chart-reading-head">
                 <h3>{expandedRow.fullName}{expandedRow.wire && ` · ${expandedRow.wire}`}</h3>
-                <button type="button" className="ghostbtn" onClick={() => {
-                  touched.current = true;
-                  setExpanded(null);
-                }}>
+                <button type="button" className="ghostbtn" onClick={closeChartReading}>
                   Close details
                 </button>
               </div>
@@ -1038,9 +1058,9 @@ export default function Explorer({ data }: { data: ExplorerData }) {
           <button
             type="button"
             className="segbtn on"
-            onClick={() => {
+            onClick={(e) => {
               if (state.mode === "families") update({ mode: "rank" });
-              openReading(selRow.runId);
+              openReading(selRow.runId, e.currentTarget);
             }}
           >
             Open comparison
@@ -1067,7 +1087,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
             <button
               type="button"
               className="ghostbtn"
-              onClick={() => openReading(selRow.runId)}
+              onClick={(e) => openReading(selRow.runId, e.currentTarget)}
             >
               Reading
             </button>
@@ -1265,7 +1285,7 @@ interface ChartViewProps {
   setHoverId: (id: string | null) => void;
   chipId: string | null;
   setChipId: (id: string | null) => void;
-  onSelect: (row: XRow, reveal?: boolean) => void;
+  onSelect: (row: XRow, opener?: HTMLButtonElement) => void;
   onBrush: (b: Brush) => void;
 }
 
@@ -1440,6 +1460,12 @@ function ChartView({
     lo * Math.sqrt(10),
     costs.length ? Math.pow(10, Math.ceil(Math.log10(Math.max(...costs)) * 2) / 2) : 10,
   );
+
+  // The captured starting point belongs to the old plot after a resize.
+  useLayoutEffect(() => {
+    setDrag(null);
+  }, [width, lo, hi, axisMax]);
+
   const x = (c: number) =>
     padL + ((Math.log10(c) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo))) * (W - padL - padR);
   const y = (a: number) => padT + (1 - a / axisMax) * (H - padT - padB);
@@ -2110,7 +2136,7 @@ function ChartView({
               <button
                 type="button"
                 className="segbtn on"
-                onClick={() => onSelect(chipRow, true)}
+                onClick={(e) => onSelect(chipRow, e.currentTarget)}
               >
                 Open details
               </button>
@@ -2162,7 +2188,7 @@ function ChartView({
                         type="button"
                         className={`rail-row${state.sel === row.runId ? " sel" : ""}`}
                         onPointerEnter={() => setHoverId(row.runId)}
-                        onClick={() => onSelect(row, true)}
+                        onClick={(e) => onSelect(row, e.currentTarget)}
                       >
                         <Mark mark={row.mark} size={18} />
                         <span>{row.fullName}</span>
@@ -2190,7 +2216,7 @@ function ChartView({
                 aria-pressed={state.sel === row.runId}
                 onPointerEnter={() => setHoverId(row.runId)}
                 onPointerLeave={() => setHoverId(null)}
-                onClick={() => onSelect(row, true)}
+                onClick={(e) => onSelect(row, e.currentTarget)}
               >
                 <Mark mark={row.mark} size={18} />
                 <span className="sync-name">

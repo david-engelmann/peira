@@ -5,6 +5,9 @@ indexes the load-bearing claims; detail lives in the linked docs.
 
 ## We claim
 
+- The board compares measured runs by model role, decision interface, inference location, weight access and benchmark baseline cohort. The two GPT-6 Luna runs can be inspected side by side. [Model profile evidence](../site/board/MODEL-PROFILES.md), [OpenAI Decisions adapter](Adapters.md#openai-decisions)
+- The full-suite ranking and the guard ranking use different sets of cases. Each guard result reports its abstention-subset basis. [Ranking rules](Admission-Rules.md), [Board comparison method](Analytics-Methodology.md#comparing-model-groups)
+
 - peira measures whether hostile input manipulations change typed decision
   outputs, with paired benign/attacked controls, across the documented
   attack families.
