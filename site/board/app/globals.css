@@ -703,7 +703,7 @@ button.xh.on { color: var(--accent); }
 .xfam-head:hover .xname { text-decoration: underline; text-underline-offset: 3px; }
 .xfam-head > .reading-chevron { flex: none; margin-left: 4px; }
 .xfam-head .xname { flex: 1; }
-.xfam-screen-label { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+.provider-description, .xfam-screen-label { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
 .xfam-bars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 12px 0 0; }
 .xfam-bar { display: grid; grid-template-columns: minmax(0, 40%) minmax(0, 1fr) 86px; gap: 4px 8px; align-content: start; align-items: center; }
 .xfam-key { font-size: 14px; color: var(--ink-2); margin: 0 0 16px; }

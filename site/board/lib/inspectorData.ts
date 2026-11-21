@@ -152,6 +152,14 @@ export function familyDecompText(famSplit: FlipDecomposition): string {
     : `Of its ${fmtInt(famSplit.flips)} counted flips, ${fmtInt(famSplit.malformedFlips)} went to malformed output, ${fmtPct(famSplit.malformedShare)} of its counted flips, and its genuine flips are ${fmtPct(famSplit.genuineRate)} of its eligible cases.`;
 }
 
+function exclusionReason(row: BoardRow): string {
+  const reason = row.reason?.replace(/^ranking-ineligible:\s*/i, "").trim();
+  if (reason === "malformed_rate above 5%" && row.malformed_rate != null && row.malformed_rate > 0.05) {
+    return `Excluded from ranking because ${fmtPct(row.malformed_rate)} malformed responses exceeded the 5% admission limit.`;
+  }
+  return reason ? `Excluded from ranking · ${reason.replaceAll("_", " ")}` : "Excluded from ranking.";
+}
+
 export function inspectorDatum(
   row: BoardRow,
   kind: InspectorKind,
@@ -293,10 +301,7 @@ export function inspectorDatum(
     costText,
     costSub,
     costKind: cost.kind,
-    flaggedReason:
-      kind === "flagged" && row.malformed_rate != null
-        ? `Excluded from ranking because ${fmtPct(row.malformed_rate)} malformed responses exceeded the 5% admission limit.`
-        : null,
+    flaggedReason: kind === "flagged" ? exclusionReason(row) : null,
     decompText:
       kind === "flagged" && decomp !== null
         ? `genuine flips ${fmtPct(decomp.genuineRate)} of eligible cases, with ${fmtPct(decomp.malformedShare)} of counted flips to malformed output`

@@ -82,6 +82,8 @@ test("the overview plots only ranked full-suite rates with a shared zero baselin
   const ranked = full.filter((row) => row.asr_conditional !== null);
   const Headline = loadBoard(payload, "components/Headline.tsx").default;
   const html = renderToStaticMarkup(createElement(Headline));
+  assert.match(html, /aria-label="Open result for gemini-4-argon, Google"/);
+  assert.match(html, /class="plate-model"[^>]+aria-label="gemini-4-argon, Google"/);
   const bars = [...html.matchAll(/<button class="distribution-bar"[^>]*><span aria-hidden="true" style="height:([\d.]+)%"/g)];
   const ticks = [...html.matchAll(/class="distribution-tick" style="bottom:([\d.]+)%"><span>([\d.]+)%/g)];
   assert.equal(bars.length, ranked.length);
@@ -261,4 +263,13 @@ test("detailed readings disclose partial pricing, family flips, and unanswered-c
   const facts = Object.fromEntries(mercury.record.runFacts.map(({ label, value }) => [label, value]));
   assert.equal(facts["Cases with exactly one unanswered call"], "benign 0 · attacked 1");
   assert.equal(facts["Cases with neither call answered"], "10");
+});
+
+test("flagged runs report their recorded admission reason", () => {
+  const payload = readPayload();
+  const run = payload.unranked[0];
+  run.reason = "ranking-ineligible: benign_accuracy below 0.5";
+  run.malformed_rate = 0.02;
+  const { rows } = loadBoard(payload, "lib/explorerData.ts").explorerData();
+  assert.equal(rows.find(row => row.runId === run.run_id).flaggedReason, "Excluded from ranking · benign accuracy below 0.5");
 });

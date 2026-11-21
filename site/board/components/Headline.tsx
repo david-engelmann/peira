@@ -77,7 +77,7 @@ export default function Headline() {
         <ol>
           {featured.map(({ href, name, mark, rate, interval, malformedShare }) => (
             <li key={href}>
-              <a className="plate-model" href={href}><Mark mark={mark} size={22} />{name}</a>
+              <a className="plate-model" href={href} aria-label={`${name}, ${mark.label}`}><Mark mark={mark} size={22} />{name}</a>
               <strong>{fmtPct(rate)}{malformedShare && <span> · {malformedShare}</span>}</strong>
               <span>{interval ? fmtCi(interval) : "Unavailable"}</span>
             </li>

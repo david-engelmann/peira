@@ -174,7 +174,7 @@ export default function StudyCostChart({ points }: { points: CostPoint[] }) {
                 style={{ left: `${left}%`, bottom: `${bottom}%` }}
                 tabIndex={point === current ? 0 : -1}
                 aria-pressed={point === current}
-                aria-label={`${point.name} · ${point.coverage === "lower-bound" ? "≥" : ""}${fmtUsdExact(point.cost)} · ${fmtPct(point.asr)} · ${coverageLabels[point.coverage]}${point.ci ? ` · 95% interval ${fmtCi(point.ci)}` : ""}`}
+                aria-label={`${point.name}, ${point.mark.label} · ${point.coverage === "lower-bound" ? "≥" : ""}${fmtUsdExact(point.cost)} · ${fmtPct(point.asr)} · ${coverageLabels[point.coverage]}${point.ci ? ` · 95% interval ${fmtCi(point.ci)}` : ""}`}
                 onFocus={() => setSelectedId(point.id)}
                 onClick={event => { if (event.detail === 0) setSelectedId(point.id); }}
                 onKeyDown={event => moveFocus(event, point.id)}
@@ -197,7 +197,7 @@ export default function StudyCostChart({ points }: { points: CostPoint[] }) {
         <div className="study-scatter-readout">
           <div>
             <div className="study-scatter-selection" role="status" aria-atomic="true">
-              <strong><Mark mark={current.mark} size={20} />{current.name}</strong>
+              <strong><Mark mark={current.mark} size={20} />{current.name}<span className="provider-description">, {current.mark.label}</span></strong>
               <span className="study-scatter-measures">
                 <span><b>{fmtPct(current.asr)}</b> attack success</span>
                 {current.ci && <span>95% CI {fmtCi(current.ci)}</span>}
@@ -208,7 +208,7 @@ export default function StudyCostChart({ points }: { points: CostPoint[] }) {
                 </span>
               </span>
             </div>
-            <a href={`#result=${encodeURIComponent(current.slug)}`} aria-label={`Open result for ${current.name}`}>
+            <a href={`#result=${encodeURIComponent(current.slug)}`} aria-label={`Open result for ${current.name}, ${current.mark.label}`}>
               Open result <span aria-hidden="true">↗</span>
             </a>
           </div>
