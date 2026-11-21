@@ -74,17 +74,20 @@ body { background: var(--ground); }
 .cover-field {
   position: absolute; inset: 0 calc((100vw - 100%) / -2); z-index: -1;
   overflow: hidden; pointer-events: none;
-  background: radial-gradient(ellipse at 82% 30%, light-dark(#e3e6ff, #212744) 0%, transparent 57%),
-    linear-gradient(135deg, light-dark(#f2f7ff, #0f192c), var(--ground) 58%);
+  background:
+    radial-gradient(ellipse at 76% 32%, light-dark(#e3e8ff, #202845), transparent 60%),
+    radial-gradient(ellipse at 10% 89%, light-dark(#e2f0f5, #122938), transparent 48%),
+    var(--ground);
+  mask-image: linear-gradient(to bottom, #000 86%, transparent);
 }
 .field-plane {
   position: absolute; inset: -3%; transform: translate(var(--field-x,0),var(--field-y,0));
   transition: transform 240ms ease-out;
 }
 .field-plane svg { width: 100%; height: 100%; }
-.contour-cool { stop-color: light-dark(#248caa, #43c9db); stop-opacity: .64; }
+.contour-cool { stop-color: light-dark(#248caa, #43c9db); stop-opacity: .45; }
 .contour-blue { stop-color: light-dark(#708bd2, #6b9de5); stop-opacity: .28; }
-.contour-violet { stop-color: light-dark(#745cce, #9e81ff); stop-opacity: .8; }
+.contour-violet { stop-color: light-dark(#745cce, #9e81ff); stop-opacity: .54; }
 @keyframes field-arrival { from { transform: translate(1.6%, 3%) scale(1.03); } to { transform: none; } }
 @media (prefers-reduced-motion: no-preference) {
   .field-plane svg { animation: field-arrival 3.8s cubic-bezier(.15,.55,.22,1) both; }

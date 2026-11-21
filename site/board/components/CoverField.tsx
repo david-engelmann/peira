@@ -4,13 +4,13 @@ import { useEffect, useRef } from "react";
 
 // Parallel contours form a decorative field behind the benchmark. The plotted
 // observations are drawn independently, inside the distribution figure.
-const contours = Array.from({ length: 47 }, (_, i) => {
-  const t = i / 46;
+const contours = Array.from({ length: 25 }, (_, i) => {
+  const t = i / 24;
   return [
-    `M -100 ${452 + t * 84}`,
-    `C 135 ${443 + t * 210}, 237 ${303 + t * 322}, 462 ${386 + t * 171}`,
-    `S 706 ${606 - t * 180}, 895 ${326 - t * 168}`,
-    `S 1171 ${120 + t * 170}, 1550 ${120 - t * 164}`,
+    `M -100 ${460 + t * 94}`,
+    `C 124 ${508 + t * 82}, 238 ${362 + t * 86}, 460 ${435 + t * 70}`,
+    `S 731 ${522 + t * 42}, 908 ${342 + t * 48}`,
+    `S 1184 ${119 + t * 78}, 1550 ${80 + t * 76}`,
   ].join(" ");
 });
 
@@ -28,8 +28,8 @@ export default function CoverField() {
     const move = (event: PointerEvent) => {
       if (!motion.matches || event.pointerType === "touch") return;
       const box = cover.getBoundingClientRect();
-      node.style.setProperty("--field-x", `${(event.clientX - box.left - box.width / 2) / box.width * 36}px`);
-      node.style.setProperty("--field-y", `${(event.clientY - box.top - box.height / 2) / box.height * 24}px`);
+      node.style.setProperty("--field-x", `${(event.clientX - box.left - box.width / 2) / box.width * 24}px`);
+      node.style.setProperty("--field-y", `${(event.clientY - box.top - box.height / 2) / box.height * 16}px`);
     };
     cover.addEventListener("pointermove", move, { passive: true });
     cover.addEventListener("pointerleave", reset);
@@ -46,7 +46,7 @@ export default function CoverField() {
       <div className="field-plane">
         <svg viewBox="0 0 1440 580" preserveAspectRatio="none" focusable="false">
           <defs>
-            <linearGradient id="contour-ink" x1="0%" x2="100%" y1="80%" y2="20%">
+            <linearGradient id="contour-ink" gradientUnits="userSpaceOnUse" x1="0" x2="1440" y1="480" y2="100">
               <stop className="contour-cool" />
               <stop offset=".47" className="contour-blue" />
               <stop offset=".78" className="contour-violet" />
