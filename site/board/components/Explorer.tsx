@@ -9,6 +9,12 @@ import {
   useState,
 } from "react";
 import type { ExplorerData, XCalArm, XRow } from "@/lib/explorerData";
+import {
+  dimensionLabels,
+  groupLabels,
+  profileDimensions,
+  type ProfileDimension,
+} from "@/lib/profileLabels";
 import Mark from "@/components/Mark";
 import {
   fmtDeltaPct,
@@ -29,8 +35,9 @@ import {
 
 type Pop = "all" | "full" | "guards" | "flagged";
 type Mode = "rank" | "chart" | "families";
+type ProfileFilters = Record<ProfileDimension, string>;
 
-interface XState {
+interface XState extends ProfileFilters {
   pop: Pop;
   mode: Mode;
   sort: string;
@@ -50,7 +57,15 @@ interface Brush {
   asrHi: number;
 }
 
+const ALL_PROFILES: ProfileFilters = {
+  kind: "all",
+  serving: "all",
+  weights: "all",
+  tier: "all",
+};
+
 const DEFAULTS: XState = {
+  ...ALL_PROFILES,
   pop: "full",
   mode: "chart",
   sort: "asr",
@@ -141,6 +156,16 @@ function ReadingBody({ row }: { row: XRow }) {
   const d = decompLine(row);
   return (
     <div className="reading-body">
+      <dl className="reading-profile">
+        {profileDimensions
+          .filter((dimension) => dimension !== "tier" || row.profile.frontier)
+          .map((dimension) => (
+            <div key={dimension}>
+              <dt className="micro">{dimensionLabels[dimension]}</dt>
+              <dd>{groupLabels[dimension][profileValue(row, dimension)]}</dd>
+            </div>
+          ))}
+      </dl>
       <div className="reading-figs">
         <div>
           <span className="micro">{row.asrLabel}</span>
@@ -435,11 +460,19 @@ function matchesPopulation(row: XRow, pop: Pop) {
   return pop === "all" || row.kind === (pop === "guards" ? "slice" : pop);
 }
 
-export default function Explorer({ data }: { data: ExplorerData }) {
-  const byId = useMemo(
-    () => new Map(data.rows.map((r) => [r.runId, r])),
-    [data],
+function profileValue(row: XRow, dimension: ProfileDimension) {
+  return dimension === "tier"
+    ? (row.profile.frontier ? "frontier" : "other")
+    : row.profile[dimension];
+}
+
+function matchesProfile(row: XRow, filters: ProfileFilters) {
+  return profileDimensions.every((dimension) =>
+    filters[dimension] === "all" || filters[dimension] === profileValue(row, dimension),
   );
+}
+
+export default function Explorer({ data }: { data: ExplorerData }) {
   const bySlug = useMemo(
     () => new Map(data.rows.map((r) => [r.slug, r])),
     [data],
@@ -530,6 +563,12 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     if (vendor) patch.vendor = vendor;
     const cost = params.get("cost");
     if (cost) patch.cost = cost;
+    for (const dimension of profileDimensions) {
+      const value = params.get(dimension);
+      if (value !== null && Object.hasOwn(groupLabels[dimension], value)) {
+        patch[dimension] = value;
+      }
+    }
     const q = params.get("q");
     if (q !== null) patch.q = q;
     const selSlug = params.get("sel");
@@ -570,28 +609,6 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, [parseHash]);
-
-  useEffect(() => {
-    if (!touched.current) return;
-    const params = new URLSearchParams();
-    params.set("pop", state.pop);
-    if (state.mode !== DEFAULTS.mode) params.set("mode", state.mode);
-    if (state.sort !== DEFAULTS.sort) params.set("sort", state.sort);
-    if (state.vendor !== "all") params.set("vendor", state.vendor);
-    if (state.cost !== "all") params.set("cost", state.cost);
-    if (state.q) params.set("q", state.q);
-    const selRow = state.sel ? byId.get(state.sel) : null;
-    if (selRow) params.set("sel", selRow.slug);
-    const pinRow = state.pin ? byId.get(state.pin) : null;
-    if (pinRow) params.set("pin", pinRow.slug);
-    if (state.frontier) params.set("frontier", "1");
-    if (state.grey !== DEFAULTS.grey) params.set("grey", state.grey);
-    const qs = params.toString();
-    const target = qs ? `#explorer?${qs}` : "#explorer";
-    if (window.location.hash !== target) {
-      window.history.replaceState(null, "", target);
-    }
-  }, [state, byId]);
 
   const snapshotFlip = useCallback(() => {
     const root = listRef.current;
@@ -635,11 +652,12 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     [snapshotFlip],
   );
 
-  const visible = useMemo(() => {
+  const filtered = useMemo(() => {
     const band = COST_BANDS.find((b) => b.key === state.cost) ?? COST_BANDS[0];
     const query = state.q.trim().toLowerCase();
     return data.rows.filter((row) => {
       if (!matchesPopulation(row, state.pop)) return false;
+      if (!matchesProfile(row, state)) return false;
       if (state.vendor !== "all" && row.vendorKey !== state.vendor) return false;
       if (!band.test(row.costValue)) return false;
       if (
@@ -650,14 +668,17 @@ export default function Explorer({ data }: { data: ExplorerData }) {
       ) {
         return false;
       }
-      if (brush) {
-        if (row.asr === null || row.costValue === null) return false;
-        if (row.costValue < brush.costLo || row.costValue > brush.costHi) return false;
-        if (row.asr < brush.asrLo || row.asr > brush.asrHi) return false;
-      }
       return true;
     });
-  }, [data, state, brush]);
+  }, [data, state]);
+
+  const visible = useMemo(() => {
+    if (brush === null) return filtered;
+    return filtered.filter((row) =>
+      row.asr !== null && row.asr >= brush.asrLo && row.asr <= brush.asrHi &&
+      row.costValue !== null && row.costValue >= brush.costLo && row.costValue <= brush.costHi,
+    );
+  }, [brush, filtered]);
 
   const groups = useMemo(() => {
     if (state.pop !== "all") return [{ kind: "one" as const, rows: sortRows(visible, state.sort) }];
@@ -668,12 +689,52 @@ export default function Explorer({ data }: { data: ExplorerData }) {
     ].filter((g) => g.rows.length > 0);
   }, [visible, state]);
 
-  const selRow = state.sel ? byId.get(state.sel) ?? null : null;
-  const pinRow = state.pin ? byId.get(state.pin) ?? null : null;
-  const expandedRow = expanded ? byId.get(expanded) ?? null : null;
+  const chartSelection = filtered.find((row) => row.runId === state.sel) ?? null;
+  const urlPin = filtered.find((row) => row.runId === state.pin) ?? null;
+  const selRow = visible.find((row) => row.runId === state.sel) ?? null;
+  const pinRow = visible.find((row) => row.runId === state.pin) ?? null;
+  const expandedRow = visible.find((row) => row.runId === expanded) ?? null;
   const populationCount = data.rows.filter((row) => matchesPopulation(row, state.pop)).length;
+  const activeProfileFilters = profileDimensions.filter((dimension) => state[dimension] !== "all");
+
+  useEffect(() => {
+    if ((state.sel !== null && chartSelection === null) || (state.pin !== null && urlPin === null)) {
+      setState((current) => current === state ? {
+        ...current,
+        sel: chartSelection?.runId ?? null,
+        pin: urlPin?.runId ?? null,
+      } : current);
+    }
+    if (expanded && !expandedRow) setExpanded(null);
+    if (hoverId && !visible.some((row) => row.runId === hoverId)) setHoverId(null);
+    if (chipId && !visible.some((row) => row.runId === chipId)) setChipId(null);
+  }, [state, chartSelection, urlPin, visible, expanded, expandedRow, hoverId, chipId]);
+
+  useEffect(() => {
+    if (!touched.current) return;
+    const params = new URLSearchParams();
+    params.set("pop", state.pop);
+    if (state.mode !== DEFAULTS.mode) params.set("mode", state.mode);
+    if (state.sort !== DEFAULTS.sort) params.set("sort", state.sort);
+    if (state.vendor !== "all") params.set("vendor", state.vendor);
+    if (state.cost !== "all") params.set("cost", state.cost);
+    for (const dimension of profileDimensions) {
+      if (state[dimension] !== "all") params.set(dimension, state[dimension]);
+    }
+    if (state.q) params.set("q", state.q);
+    if (chartSelection) params.set("sel", chartSelection.slug);
+    if (urlPin) params.set("pin", urlPin.slug);
+    if (chartSelection && expandedRow?.runId === chartSelection.runId) params.set("open", "1");
+    if (state.frontier) params.set("frontier", "1");
+    if (state.grey !== DEFAULTS.grey) params.set("grey", state.grey);
+    const target = `#explorer?${params}`;
+    if (window.location.hash !== target) {
+      window.history.replaceState(null, "", target);
+    }
+  }, [state, chartSelection, urlPin, expandedRow]);
 
   const openReading = (runId: string) => {
+    touched.current = true;
     if (state.mode === "chart") {
       if (expanded === runId) {
         if (readingRef.current) {
@@ -819,7 +880,7 @@ export default function Explorer({ data }: { data: ExplorerData }) {
                 checked={state.frontier}
                 onChange={(e) => update({ frontier: e.target.checked })}
               />
-              <span>Show frontier</span>
+              <span>Cost frontier</span>
             </label>
             <label className="xfield">
               <span className="micro">Highlight</span>
@@ -837,6 +898,38 @@ export default function Explorer({ data }: { data: ExplorerData }) {
             </label>
           </>
         )}
+        <details className="model-filters">
+          <summary>
+            Model filters
+            {activeProfileFilters.map((dimension) => (
+              <span className="model-filter-value" key={dimension}>
+                {` · ${groupLabels[dimension][state[dimension]]}`}
+              </span>
+            ))}
+          </summary>
+          <div className="model-filter-fields">
+            {profileDimensions.map((dimension) => (
+              <label className="xfield" key={dimension}>
+                <span className="micro">{dimensionLabels[dimension]}</span>
+                <select
+                  id={`explorer-${dimension}`}
+                  value={state[dimension]}
+                  onChange={(e) => update({ [dimension]: e.target.value }, true)}
+                >
+                  <option value="all">Any</option>
+                  {Object.entries(groupLabels[dimension]).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            {activeProfileFilters.length > 0 && (
+              <button type="button" className="ghostbtn" onClick={() => update(ALL_PROFILES, true)}>
+                Clear model filters
+              </button>
+            )}
+          </div>
+        </details>
       </div>
 
       {state.pop === "guards" && (
@@ -869,12 +962,16 @@ export default function Explorer({ data }: { data: ExplorerData }) {
           onUnpin={() => update({ pin: null })}
         />
       )}
-      {state.mode === "chart" && (
+      {state.mode === "chart" && visible.length > 0 && visible.every((row) => row.kind === "slice") ? (
+        <p className="xempty">
+          Guard results are shown in Rankings and Families.
+        </p>
+      ) : state.mode === "chart" && (
         <ChartView
           data={data}
           visible={visible}
           state={state}
-          selRow={selRow}
+          selRow={chartSelection}
           hoverId={hoverId}
           setHoverId={setHoverId}
           chipId={chipId}
@@ -906,7 +1003,10 @@ export default function Explorer({ data }: { data: ExplorerData }) {
             <div className="reading open">
               <div className="chart-reading-head">
                 <h3>{expandedRow.fullName}{expandedRow.wire && ` · ${expandedRow.wire}`}</h3>
-                <button type="button" className="ghostbtn" onClick={() => setExpanded(null)}>
+                <button type="button" className="ghostbtn" onClick={() => {
+                  touched.current = true;
+                  setExpanded(null);
+                }}>
                   Close details
                 </button>
               </div>
@@ -1942,7 +2042,7 @@ function ChartView({
         {state.frontier && frontierPts.length > 1 && (
           <p className="chart-legend">
             <span className="legend-swatch" aria-hidden="true" />
-            Frontier · Lowest attack success for a given cost or less
+            Cost frontier · Lowest attack success for a given cost or less
           </p>
         )}
         {offScale.length > 0 && (
@@ -2211,6 +2311,9 @@ function FamiliesView({ groups, data, expanded, onToggle }: FamiliesViewProps) {
           ))}
         </div>
       ))}
+      {groups.every((group) => group.rows.length === 0) && (
+        <p className="xempty">No results match these filters.</p>
+      )}
     </div>
   );
 }

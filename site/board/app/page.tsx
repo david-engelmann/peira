@@ -2,6 +2,8 @@ import { boardGroups, boardVersions, dateWords } from "@/lib/payload";
 import { explorerData } from "@/lib/explorerData";
 import VendorSprite from "@/components/VendorSprite";
 import TopBar from "@/components/TopBar";
+import ModelGroups from "@/components/ModelGroups";
+import { modelProfile } from "@/lib/modelProfile";
 import Headline from "@/components/Headline";
 import StudyFindings from "@/components/StudyFindings";
 import Explorer from "@/components/Explorer";
@@ -17,6 +19,9 @@ export default function Home() {
       <VendorSprite />
       <TopBar />
       <Headline />
+      <ModelGroups observations={groups.full.flatMap(row =>
+        row.asr_conditional === null ? [] : [{ rate: row.asr_conditional, profile: modelProfile(row) }]
+      )} />
       <StudyFindings />
       <Explorer data={explorerData()} />
       <MethodStub />

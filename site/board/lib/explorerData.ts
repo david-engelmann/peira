@@ -24,6 +24,7 @@ import {
   fmtUsdExact,
 } from "@/lib/format";
 import { vendorFamilyOf } from "@/lib/vendorColors";
+import { modelProfile } from "@/lib/modelProfile";
 import { asrAxisFor, axisPct } from "@/lib/chart";
 import {
   calibrationOf,
@@ -97,6 +98,7 @@ export interface XRow {
   costKind: InspectorDatum["costKind"];
   vendorKey: string;
   vendorLabel: string;
+  profile: ReturnType<typeof modelProfile>;
   /** Counted flips and their split, where the records derive one. */
   decomp: {
     flips: number;
@@ -573,6 +575,7 @@ function shapeRow(
     costKind: datum.costKind,
     vendorKey: vendorFamilyOf(row).key,
     vendorLabel: vendorFamilyOf(row).label,
+    profile: modelProfile(row),
     decomp:
       decomp === null
         ? null

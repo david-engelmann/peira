@@ -92,6 +92,56 @@
   font-size: 13px;
 }
 
+.explorer .model-filters {
+  flex-basis: 100%;
+  grid-column: 1 / -1;
+}
+
+.explorer .model-filters summary {
+  width: fit-content;
+  padding-block: 7px;
+  color: var(--explorer-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.explorer .model-filters summary:hover {
+  color: var(--ink);
+}
+
+.explorer .model-filter-value {
+  display: inline-block;
+  white-space: pre-wrap;
+}
+
+.explorer .model-filter-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+  padding: 6px 0 0;
+}
+
+.explorer .model-filter-fields .ghostbtn {
+  min-height: 38px;
+  justify-self: start;
+}
+
+.explorer .reading-profile {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0 0 16px;
+}
+
+.explorer .reading-profile dd {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
 .explorer .ghostbtn,
 .explorer .pinbtn {
   border-color: #aebeb2;
@@ -452,6 +502,15 @@
     gap: 8px 10px;
   }
 
+  .explorer .model-filter-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .explorer .model-filter-fields .ghostbtn {
+    grid-column: 1 / -1;
+  }
+
   .explorer .explorer-views .segbtn {
     padding-inline: 8px;
   }
@@ -505,6 +564,8 @@
 @media (pointer: coarse) {
   .explorer .xfield select,
   .explorer .xfield input,
+  .explorer .model-filters summary,
+  .explorer .model-filter-fields .ghostbtn,
   .explorer .sync-row {
     min-height: 44px;
   }

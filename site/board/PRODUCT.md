@@ -19,8 +19,9 @@ Peira benchmarks decision models under attack. The board publishes the results o
 ## What the board claims
 
 - The overview introduces the paired decision experiment and shows the distribution of ranked full-suite rates. The three lowest observed rates carry their intervals and link to individual records.
+- Before the findings, readers can compare full-suite results by model role, inference location, weight access and frontier cohort. The explorer supports combinations of these attributes. [Model profiles](MODEL-PROFILES.md) documents the evidence for these labels. Guard results keep their subset basis.
 - The analyses explain which attack families contribute failures and how observed run costs relate to attack success. A link from each chart opens the corresponding explorer view. The default view compares full-suite results. Readers can inspect guard and flagged populations explicitly.
-- Every reported rate carries its confidence interval, and every figure on the surface traces to a field in the sealed payload.
+- Each ranked result carries its conditional attack success rate and confidence interval. Group medians and counts summarize those individual results.
 - Populations are named wherever a figure appears. Ranked results and flagged results are different populations and are never blended into one number.
 - Attack success is stated in the adopted precise wording. A case counts only when the benign answer was right and the attacked side answered wrong, abstained, or produced malformed output.
 - Decompositions travel with their headlines. A result whose flips are mostly malformed output is never presented as a decision failure, and a headline rate for such a result never appears without its malformed share beside it.

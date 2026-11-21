@@ -16,6 +16,7 @@
  *     the chart, and a brush drag filters the view and says
  *     so in the count line
  *   a model address (/#result=<slug>) opens that reading
+ *   model filters intersect, keep standing ranks, and remove hidden readings
  *   a finding's action sets the explorer state it promises
  *   finding actions followed in sequence each land where
  *     they promise, with unnamed state back at its default
@@ -190,6 +191,33 @@ for (const width of [360, 480, 768, 1024, 1280, 1600]) {
   await page.close();
 }
 pass("six widths render both analyses, the explorer and Method, with no overflow");
+
+/* The chart and its linked selections must agree on their population and median. */
+const cohortPage = await browser.newPage();
+await cohortPage.goto(base, { waitUntil: "networkidle0" });
+const fullRates = new Map(full.filter(r => r.asr_conditional != null).map(r => [r.run_id, r.asr_conditional]));
+for (const dimension of ["kind", "serving", "weights", "tier"]) {
+  await cohortPage.select("#model-groups select", dimension);
+  const chartRows = await cohortPage.$$eval(".group-row", elements => elements.map(el => ({
+    link: el.querySelector("a").getAttribute("href"),
+    ticks: el.querySelectorAll(".group-track i").length,
+    median: parseFloat(el.querySelector(".group-median").textContent),
+  })));
+  const seen = new Set();
+  for (const { link, ticks, median } of chartRows) {
+    await cohortPage.click(`.group-name a[href="${link}"]`);
+    await cohortPage.waitForFunction(n => document.querySelectorAll(".xlist [data-rid]").length === n, {}, ticks);
+    const ids = await cohortPage.$$eval(".xlist [data-rid]", els => els.map(el => el.dataset.rid));
+    const rates = ids.map(id => fullRates.get(id)).sort((a, b) => a - b);
+    if (rates.some(rate => rate == null) || ids.some(id => seen.has(id))) fail(`Unexpected cohort membership for ${link}`);
+    ids.forEach(id => seen.add(id));
+    const middle = (rates[Math.floor((rates.length - 1) / 2)] + rates[Math.floor(rates.length / 2)]) / 2;
+    if (Math.abs(100 * middle - median) > 0.05001) fail(`Incorrect median for ${link}`);
+  }
+  if (seen.size !== fullRates.size) fail(`Incomplete full-suite coverage for ${dimension}`);
+}
+await cohortPage.close();
+pass("all four group comparisons link to the full-suite results used in each median");
 
 /* ---------- desktop interactions ---------- */
 
@@ -593,6 +621,71 @@ await waitFor(page, () => document.querySelector("#explorer-pop")?.value === "al
 const legacyCount = await page.$$eval(".xrow", (results) => results.length);
 if (legacyCount !== rows.length) fail("a legacy Explorer link lost the original All results scope");
 else pass("a legacy Explorer link keeps the original All results scope");
+
+/* Model profile filters preserve the board's ranks and combine in every view. */
+const openFrontierRuns = full.filter((r) =>
+  ["kimi-k3", "deepseek-flash", "MiniMax-M3"].includes(r.adapter_version),
+);
+const selectedFrontier = openFrontierRuns[0];
+const profileHash = new URLSearchParams({
+  pop: "full", mode: "rank", kind: "general", serving: "hosted", weights: "open",
+  tier: "frontier", frontier: "1", sel: modelSlug(selectedFrontier), pin: modelSlug(leader), open: "1",
+});
+await page.goto(`${base}/#explorer?${profileHash}`, { waitUntil: "networkidle0" });
+await waitFor(page, () => document.querySelector(".reading-profile") !== null);
+const filteredRankings = await page.evaluate(() => ({
+  ranks: [...document.querySelectorAll(".xrow")].map((row) => [
+    row.dataset.rid, Number(row.querySelector(".xrank")?.textContent),
+  ]),
+  profile: document.querySelector(".reading-profile")?.textContent ?? "",
+  tray: Boolean(document.querySelector(".tray")),
+  controls: document.querySelector(".model-filters summary")?.textContent ?? "",
+}));
+const expectedRanks = openFrontierRuns.map((r) => [r.run_id, r.rank]);
+const expectedProfileLabels = ["General-purpose", "Hosted inference", "Documented open weights", "Frontier baselines"];
+if (JSON.stringify(filteredRankings.ranks) !== JSON.stringify(expectedRanks) ||
+    !expectedProfileLabels.every((label) => filteredRankings.controls.includes(label))) {
+  fail(`the combined model filters changed ranks or returned unexpected rows: ${JSON.stringify(filteredRankings)}`);
+} else pass("combined model filter links preserve the full-suite ranks");
+if (filteredRankings.tray ||
+    !expectedProfileLabels.every((label) => filteredRankings.profile.includes(label))) {
+  fail("a filtered reading omitted its model profile or included a hidden pin");
+} else pass("a filtered reading shows its profile and omits the hidden pin");
+
+await setMode(page, "Chart");
+const chartProfile = await page.evaluate(() => ({
+  results: document.querySelectorAll(".sync-row").length,
+  costFrontier: [...document.querySelectorAll(".xcheck")]
+    .find((label) => label.textContent.trim() === "Cost frontier")?.querySelector("input")?.checked,
+}));
+if (chartProfile.results !== expectedRanks.length || !chartProfile.costFrontier) {
+  fail("the model cohort and the cost frontier overlay do not work independently");
+} else pass("the model cohort and cost frontier overlay coexist on the chart");
+await page.$eval(".model-filters summary", (el) => el.click());
+await page.select("#explorer-serving", "local");
+await waitFor(page, () => location.hash.includes("serving=local"));
+const hiddenSelection = await page.evaluate(() => {
+  const params = new URLSearchParams(location.hash.split("?")[1]);
+  return params.get("serving") === "local" && !["sel", "pin", "open"].some((key) => params.has(key)) &&
+    !document.querySelector(".belowreading, .tray, .footstrip-name");
+});
+if (!hiddenSelection) fail("filters retain a hidden selected reading or pin in the view or URL");
+else pass("an incompatible model filter clears the hidden reading and its link state");
+await setMode(page, "Families");
+if (!await page.$(".xfamilies .xempty")) {
+  fail("the family view does not explain an empty filter intersection");
+}
+await page.$eval(".model-filters button", (el) => el.click());
+await setMode(page, "Rankings");
+const cleared = await page.evaluate(() => ({
+  results: document.querySelectorAll(".xrow").length,
+  reading: Boolean(document.querySelector(".reading.open")),
+  filterKeys: [...new URLSearchParams(location.hash.split("?")[1]).keys()]
+    .filter((key) => ["kind", "serving", "weights", "tier"].includes(key)),
+}));
+if (cleared.results !== full.length || cleared.reading || cleared.filterKeys.length !== 0) {
+  fail("clearing the model filters did not restore the full suite without reopening a stale reading");
+} else pass("clearing model filters restores the full suite without a stale reading");
 await page.close();
 
 /* ---------- ranking transitions ---------- */
