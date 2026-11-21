@@ -259,7 +259,7 @@ jobs:
                       continue
                   plain = re.sub(r"(?i)^\s*RUN\s+", "", plain)
                   rewritten = bool(re.search(r">\s*\S*rust-toolchain\.toml\b", plain))
-                  if re.search(r"open\([^)]*,\s*[wa]\b|\.write\(", plain):
+                  if re.search(r"open\([^)]*,\s*[wa][bt+]?|\.write(?:_text|_bytes)?\(", plain):
                       rewritten = True
                   for segment in re.split(r"&&|;|\|", plain):
                       segment = segment.split(">", 1)[0].split("#", 1)[0]
@@ -268,7 +268,8 @@ jobs:
                       # Skip assignment and wrapper prefixes and any
                       # path qualification, so the verb seen is the
                       # command that actually runs.
-                      while toks and ("=" in toks[0] or base(toks[0]) in ("env", "command", "busybox", "sudo")):
+                      while toks and ("=" in toks[0] or toks[0].isdigit()
+                                      or base(toks[0]) in ("env", "command", "busybox", "sudo", "timeout", "nohup", "nice")):
                           toks = toks[1:]
                       if not toks:
                           continue
@@ -276,6 +277,9 @@ jobs:
                       plain_args = [t for t in rest if not t.startswith("-")]
                       if verb in ("cp", "mv", "ln", "install", "rsync"):
                           if len(plain_args) >= 2 and base(plain_args[-1]) == "rust-toolchain.toml":
+                              rewritten = True
+                          if plain_args and plain_args[-1] in (".", "./", workdir, workdir + "/") and \
+                                  any(base(a) == "rust-toolchain.toml" for a in plain_args[:-1]):
                               rewritten = True
                           for i, t in enumerate(rest):
                               tdir = None
@@ -295,16 +299,20 @@ jobs:
                           if any(t.startswith("of=") and base(t[3:]) == "rust-toolchain.toml" for t in rest):
                               rewritten = True
                       elif verb in ("sed", "perl"):
-                          inplace = any(t == "-i" or t.startswith("--in-place")
-                                        or (t.startswith("-i") and not t.startswith("--")) for t in rest)
+                          inplace = any(t.startswith("--in-place")
+                                        or (not t.startswith("--") and re.match(r"-[a-zA-Z]*i", t)) for t in rest)
                           if inplace and any(base(t) == "rust-toolchain.toml" for t in plain_args):
                               rewritten = True
                       elif verb in ("curl", "wget"):
+                          if verb == "curl" and any(t == "--remote-name"
+                                                    or re.fullmatch(r"-[a-zA-Z]*O[a-zA-Z]*", t) for t in rest) \
+                                  and any(base(t) == "rust-toolchain.toml" for t in plain_args):
+                              rewritten = True
                           for i, t in enumerate(rest):
                               value = None
-                              if t in ("-o", "-O", "--output") and i + 1 < len(rest):
+                              if t in ("-o", "-O", "--output", "--output-document") and i + 1 < len(rest):
                                   value = rest[i + 1]
-                              elif t.startswith("--output="):
+                              elif t.startswith("--output=") or t.startswith("--output-document="):
                                   value = t.split("=", 1)[1]
                               elif re.fullmatch(r"-[a-zA-Z]*[oO]", t) and i + 1 < len(rest):
                                   value = rest[i + 1]
