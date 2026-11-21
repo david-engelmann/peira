@@ -194,6 +194,7 @@ pass("six widths render both analyses, the explorer and Method, with no overflow
 
 /* The chart and its linked selections must agree on their population and median. */
 const cohortPage = await browser.newPage();
+await cohortPage.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
 await cohortPage.goto(base, { waitUntil: "networkidle0" });
 const fullRates = new Map(full.filter(r => r.asr_conditional != null).map(r => [r.run_id, r.asr_conditional]));
 for (const dimension of ["kind", "serving", "weights", "tier"]) {
@@ -205,7 +206,7 @@ for (const dimension of ["kind", "serving", "weights", "tier"]) {
   })));
   const seen = new Set();
   for (const { link, ticks, median } of chartRows) {
-    await cohortPage.click(`.group-name a[href="${link}"]`);
+    await cohortPage.$eval(`.group-name a[href="${link}"]`, anchor => anchor.click());
     await cohortPage.waitForFunction(n => document.querySelectorAll(".xlist [data-rid]").length === n, {}, ticks);
     const ids = await cohortPage.$$eval(".xlist [data-rid]", els => els.map(el => el.dataset.rid));
     const rates = ids.map(id => fullRates.get(id)).sort((a, b) => a - b);
