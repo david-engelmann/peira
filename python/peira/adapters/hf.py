@@ -279,13 +279,16 @@ class _HFAdapterBase:
         """The transformers AutoModel* class for this adapter."""
         raise NotImplementedError
 
-    def _load(self) -> tuple[Any, Any]:
-        """Load (tokenizer, model). The injectable seam: tests stub this."""
-        _, transformers = _require_hf()
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
+    def _load_tokenizer(self, transformers: Any) -> Any:
+        return transformers.AutoTokenizer.from_pretrained(
             self.hf_model_id, revision=self.hf_revision,
             trust_remote_code=False,
         )
+
+    def _load(self) -> tuple[Any, Any]:
+        """Load (tokenizer, model). The injectable seam: tests stub this."""
+        _, transformers = _require_hf()
+        tokenizer = self._load_tokenizer(transformers)
         # v4 loaded floating weights in the current PyTorch default dtype.
         # v5 otherwise infers a dtype from each checkpoint.
         model = self._model_class(transformers).from_pretrained(
@@ -1304,6 +1307,19 @@ class HarmBenchAdapter(_HFAdapterBase):
         "\n"
         "Answer: [/INST]"
     )
+
+    def _load_tokenizer(self, transformers: Any) -> Any:
+        if (self.hf_model_id, self.hf_revision) != (self.HF_MODEL_ID, self.HF_REVISION):
+            return super()._load_tokenizer(transformers)
+        from huggingface_hub import hf_hub_download
+
+        # The v4 tokenizer ranks BPE merges using the SentencePiece scores.
+        # The v5 Llama converter uses vocabulary order for this checkpoint.
+        vocab = hf_hub_download(self.hf_model_id, "tokenizer.model", revision=self.hf_revision)
+        return transformers.TokenizersBackend.from_pretrained(
+            self.hf_model_id, revision=self.hf_revision, vocab_file=vocab,
+            trust_remote_code=False,
+        )
 
     def _model_class(self, transformers: Any) -> Any:
         return transformers.AutoModelForCausalLM
