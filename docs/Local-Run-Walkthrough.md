@@ -6,7 +6,9 @@ Every command below was run on 2026-09-29 and the output is real.
 ## Prerequisites
 
 Python 3.10 or later. No API keys needed. The mock adapter and the
-trial-demo fixture run fully offline.
+trial-demo fixture run fully offline. The optional Hugging Face adapters
+require Python 3.11 or later. On Python 3.10 the `all` extra installs
+the hosted adapter dependencies and skips the Hugging Face stack.
 
 ## Step 1: Install
 

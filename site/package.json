@@ -1,6 +1,7 @@
 {
   "dependencies": {
-    "astro": "^5.13.0"
+    "@astrojs/markdown-satteri": "^0.4.10",
+    "astro": "^7.4.13"
   },
   "name": "peira-site",
   "private": true,

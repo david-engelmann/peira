@@ -43,11 +43,49 @@ measurement dishonesty is found.
 
 ## Guardrails (`peira[hf]`)
 
-Local Hugging Face models. Install with `pip install peira[hf]`
+Local Hugging Face models require Python 3.11 or later. Install with `pip install "peira[hf]"`
 (torch + transformers, transformers pinned below v5 until the adapters
 are verified against it). Models download from the HF Hub on first use
-and are cached; every model is pinned to an exact commit revision, never
-`main`.
+and are cached. Each built-in checkpoint is pinned to an exact commit.
+The Python SDK also accepts model and revision overrides. Use trusted,
+reviewed checkpoints for those overrides. Both model loaders set
+`trust_remote_code=False`.
+
+### Transformers security and v5 compatibility
+
+Transformers is loaded when a Hugging Face adapter is instantiated. The
+base install runs without it. The current lock resolves Transformers
+4.57.6 for the `hf` extra.
+
+| Advisory | Scope in the Hugging Face adapters |
+|---|---|
+| [GHSA-69w3-r845-3855](https://github.com/advisories/GHSA-69w3-r845-3855) | The affected `Trainer` RNG-state restore path requires resuming training from a checkpoint. The adapters only run inference. |
+| [GHSA-29pf-2h5f-8g72](https://github.com/advisories/GHSA-29pf-2h5f-8g72) | Causal model loading uses the affected `from_pretrained` path. Loading an untrusted model configuration can execute remote attention-kernel code if the optional `kernels` package is installed separately. That path bypasses the explicit trust flag in v4. Migrate to a patched v5 release. |
+| [GHSA-fgcw-684q-jj6r](https://github.com/advisories/GHSA-fgcw-684q-jj6r) | The affected LightGlue keypoint matcher uses a separate model dispatch path. The adapters load sequence classifiers, causal language models, and image-text-to-text models. |
+| [GHSA-xrqw-3rrv-vx5w](https://github.com/advisories/GHSA-xrqw-3rrv-vx5w) | The affected path writes chat templates when a tokenizer or processor is exported with `save_pretrained`. The adapters load and use tokenizers for inference. |
+| [GHSA-x9r9-c232-4q39](https://github.com/advisories/GHSA-x9r9-c232-4q39) | In v4.57.6, loading a generative checkpoint can fetch and cache custom generation code before checking trust, even when the adapter sets `trust_remote_code=False`. The Hub file listings for the built-in revisions lack custom generation modules, but SDK overrides can load other repositories. Migration should include the [upstream trust-check fix](https://github.com/huggingface/transformers/pull/48620), present in v5.17.0. |
+
+Dismiss the Trainer, LightGlue and export alerts as unused by these adapters.
+Keep both model-loading alerts open until the v5 migration has been verified.
+
+Before raising the v4 cap, verify that the pinned checkpoints still
+load and produce equivalent verdicts and scores. Test chat templates,
+label token IDs, generation, and forward-pass logits against the v4
+results. The v5 release changed model loading and tokenizer behavior,
+and the move to Hugging Face Hub v1 changes HTTP and authentication
+behavior. Hub v1 removes the `huggingface-cli login` command in Peira's
+gated-model error message. Use `hf auth login` and test gated downloads
+and retry handling. [Hub v1 migration guide](https://huggingface.co/docs/huggingface_hub/en/concepts/migration)
+
+Verify the selected v5 release on the supported Hugging Face runtimes.
+[Transformers v5 release notes](https://github.com/huggingface/transformers/releases/tag/v5.0.0)
+
+The `hf` extra requires filelock 4.2.1 or later. On Python 3.10, pip
+skips the Hugging Face dependencies when installing either `hf` or
+`all`. The base CLI and hosted adapters support Python 3.10.
+[Filelock 4.2.1](https://pypi.org/project/filelock/4.2.1/)
+
+### Model checkpoints
 
 | Adapter | Dotted path | Model | Revision |
 |---|---|---|---|

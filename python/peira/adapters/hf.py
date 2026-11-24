@@ -51,6 +51,7 @@ accept the license and run ``huggingface-cli login``.
 from __future__ import annotations
 
 import math
+import sys
 import threading
 import time
 from typing import Any
@@ -94,6 +95,8 @@ def _require_hf() -> tuple[Any, Any]:
     than an ``ImportError`` deep in a worker thread. Monkeypatchable in
     tests that stub the model layer without torch installed.
     """
+    if sys.version_info < (3, 11):
+        raise ValueError("Hugging Face adapters require Python 3.11 or later.")
     try:
         import torch
         import transformers
