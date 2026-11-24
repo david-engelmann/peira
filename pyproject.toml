@@ -29,14 +29,19 @@ classifiers = [
 # client moved from requests to httpx in huggingface_hub v1.0), and the
 # adapters are unverified against it. Lift the cap only after verifying
 # the pinned revisions load and score identically under v5.
-hf = ["transformers>=4.40,<5", "torch>=2.2"]
+# Patched filelock releases for the Hugging Face dependency chain need Python 3.11.
+hf = [
+  "transformers>=4.40,<5; python_version >= '3.11'",
+  "torch>=2.2; python_version >= '3.11'",
+  "filelock>=4.2.1; python_version >= '3.11'",
+]
 # Optional: structured-output LLM baseline adapters
 # (python/peira/adapters/llm.py).
 openai = ["openai>=1.40"]
 anthropic = ["anthropic>=0.77.0"]
 google = ["google-genai>=1.10"]  # ThinkingConfig.thinking_budget landed in 1.10;
 # GoogleAdapter disables thinking on every call and needs it.
-all = ["peira[hf]", "peira[openai]", "peira[anthropic]", "peira[google]"]
+all = ["peira[hf]; python_version >= '3.11'", "peira[openai]", "peira[anthropic]", "peira[google]"]
 # Development and test tooling. The Python suite runs under pytest
 # (unittest.TestCase classes are discovered natively); pytest-xdist
 # parallelizes it across workers and pytest-timeout guards against hangs.

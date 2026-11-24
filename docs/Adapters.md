@@ -43,7 +43,7 @@ measurement dishonesty is found.
 
 ## Guardrails (`peira[hf]`)
 
-Local Hugging Face models. Install with `pip install peira[hf]`
+Local Hugging Face models require Python 3.11 or later. Install with `pip install "peira[hf]"`
 (torch + transformers, transformers pinned below v5 until the adapters
 are verified against it). Models download from the HF Hub on first use
 and are cached. Each built-in checkpoint is pinned to an exact commit.
@@ -77,19 +77,12 @@ behavior. Hub v1 removes the `huggingface-cli login` command in Peira's
 gated-model error message. Use `hf auth login` and test gated downloads
 and retry handling. [Hub v1 migration guide](https://huggingface.co/docs/huggingface_hub/en/concepts/migration)
 
-Verify the selected v5 releases on the supported Python
-versions. [Transformers 5.17.0](https://pypi.org/project/transformers/5.17.0/)
-supports Python 3.10, while
-[Transformers 5.24.0](https://pypi.org/project/transformers/5.24.0/)
-requires Python 3.11 or later. See the
-[Transformers v5 release notes](https://github.com/huggingface/transformers/releases/tag/v5.0.0).
+Verify the selected v5 release on the supported Hugging Face runtimes.
+[Transformers v5 release notes](https://github.com/huggingface/transformers/releases/tag/v5.0.0)
 
-The locked `hf` extra uses `filelock` 4.3.1 on Python 3.11 and later.
-The Python 3.10 lock still uses 4.0.8. Even the last compatible
-release, 4.1.0, has an open high-severity advisory. The full set of
-fixes requires filelock 4.2.1 or later and Python 3.11 or later. For patched `filelock`
-on a locked Hugging Face install, use Python 3.11 or later.
-[Filelock 4.1.0](https://pypi.org/project/filelock/4.1.0/)
+The `hf` extra requires filelock 4.2.1 or later. On Python 3.10, pip
+skips the Hugging Face dependencies when installing either `hf` or
+`all`. The base CLI and hosted adapters support Python 3.10.
 [Filelock 4.2.1](https://pypi.org/project/filelock/4.2.1/)
 
 ### Model checkpoints

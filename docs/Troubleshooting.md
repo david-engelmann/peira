@@ -695,6 +695,12 @@ peira cases out.
 
 ## A2 adapter errors
 
+**`Hugging Face adapters require Python 3.11 or later.`**
+
+Create a virtual environment with Python 3.11 or later and install
+`peira[hf]` there. On Python 3.10, pip skips the Hugging Face dependencies
+even when the `hf` or `all` extra is requested.
+
 **`this adapter requires the 'hf' extra (torch and transformers): install it with: pip install 'peira[hf]'`**
 Cause: you instantiated a Hugging Face adapter (`shieldstral`,
 `protectai-prompt-injection`, `llama-prompt-guard-2`, `qwen3guard-gen`,

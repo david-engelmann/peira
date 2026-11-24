@@ -309,6 +309,11 @@ class TestPinnedRevisions(unittest.TestCase):
 # -- missing extra -----------------------------------------------------
 
 class TestMissingExtra(unittest.TestCase):
+    def test_python_310_reports_the_hf_version_requirement(self):
+        with mock.patch.object(hf_mod.sys, "version_info", (3, 10, 19)):
+            with self.assertRaisesRegex(ValueError, r"Python 3\.11 or later"):
+                ShieldstralAdapter()
+
     def test_constructor_raises_valueerror_naming_extra(self):
         # sys.modules[...] = None makes `import torch` raise ImportError
         # even on machines where torch happens to be installed.
