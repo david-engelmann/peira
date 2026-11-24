@@ -1,0 +1,60 @@
+name: Hugging Face score parity
+
+on:
+  pull_request:
+    paths:
+      - scripts/hf_score_parity.py
+      - tests/test_hf_score_parity.py
+      - python/peira/adapters/hf.py
+      - .github/workflows/hf-score-parity.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-classifier:
+    # These two public CPU checkpoints fit standard hosted runners.
+    # The full migration comparison also requires larger and gated weights.
+    runs-on: macos-15
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        adapter: [granite-guardian-hap, protectai-prompt-injection]
+    env:
+      ADAPTER: ${{ matrix.adapter }}
+      HF_HUB_DISABLE_PROGRESS_BARS: "1"
+      TOKENIZERS_PARALLELISM: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Prepare the baseline checkout and resolver
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/peira-v4" 7b7857b9039575cf45915f29e6fc9502a2f0f218
+          python -m pip install uv==0.13.9
+      - name: Capture scores using each revision's locked environment
+        run: |
+          for version in v4 v5; do
+            checkout="$GITHUB_WORKSPACE"
+            if [ "$version" = v4 ]; then checkout="$RUNNER_TEMP/peira-v4"; fi
+            uv sync --project "$checkout" --locked --extra hf --python "$(command -v python)"
+            "$checkout/.venv/bin/python" scripts/hf_score_parity.py capture \
+              --adapter "$ADAPTER" --output "$RUNNER_TEMP/records/$version/$ADAPTER.json"
+          done
+      - name: Compare every public abstention case
+        run: |
+          .venv/bin/python scripts/hf_score_parity.py compare \
+            "$RUNNER_TEMP/records/v4" "$RUNNER_TEMP/records/v5" --adapter "$ADAPTER"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: score-parity-${{ matrix.adapter }}
+          path: ${{ runner.temp }}/records/
+          if-no-files-found: warn
+          retention-days: 30
