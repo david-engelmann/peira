@@ -1993,10 +1993,6 @@ except ImportError:
 from peira.adapters.hf import _single_token_id
 
 
-@unittest.skipUnless(
-    _HAS_TRANSFORMERS,
-    "transformers not installed (pip install -e .[hf])",
-)
 class _GuardTemplateTokenizer(_FakeTokenizer):
     """Chat-template fake for the generation-prompt guard adapters.
 
@@ -2321,7 +2317,19 @@ class TestGptOssSafeguard(unittest.TestCase):
             adapter.decide(_choice_input(), "abstain", _ctx())
 
 
+@unittest.skipUnless(_HAS_TRANSFORMERS, "requires the optional Hugging Face dependencies")
 class TestRealTokenizerContract(unittest.TestCase):
+    def test_harmbench_preserves_v4_whitespace_merge(self):
+        import transformers
+
+        adapter = HarmBenchAdapter()
+        tokenizer = adapter._load_tokenizer(transformers)
+        ids = tokenizer(adapter._build_prompt("  C"))["input_ids"]
+        # v4 splits the two spaces before C this way. The v5 Llama
+        # converter instead emits [259, 29907] before the newlines.
+        self.assertEqual(len(ids), 223)
+        self.assertEqual(ids[79:85], [29871, 315, 13, 13, 5634, 13])
+
     def _load_tokenizer(self, model_id, revision):
         try:
             return AutoTokenizer.from_pretrained(

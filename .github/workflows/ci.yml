@@ -308,7 +308,8 @@ jobs:
       # The maturin PEP 517 backend builds the extension at install time,
       # so the Rust toolchain is required even for these contract tests.
       - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98.1
-      - run: pip install -e .[hf]
+      # HarmBench ships its vocabulary in SentencePiece format.
+      - run: pip install -e .[hf] sentencepiece protobuf
       - run: pip install -e .[dev]
       - run: |
           # The summary grep asserts zero skips: a partially-skipped contract
