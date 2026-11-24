@@ -6,6 +6,8 @@ from argparse import Namespace
 
 import pytest
 
+pytest.importorskip("tomllib", reason="Hugging Face adapters require Python 3.11 or later")
+
 from scripts import hf_score_parity as parity
 
 
@@ -107,3 +109,25 @@ def test_each_side_must_match_its_source_and_lock(comparison, side, key):
     path.write_text(json.dumps(record))
     with pytest.raises(ValueError, match=key):
         parity.compare(args, inputs, manifest)
+
+
+@pytest.mark.parametrize("when", ["before capture", "during measurement"])
+def test_source_edit_prevents_writing_capture(tmp_path, monkeypatch, when):
+    source = tmp_path / "hf.py"
+    original = b"original adapter"
+    source.write_bytes(original)
+    monkeypatch.setattr(parity.hf, "__file__", str(source))
+    monkeypatch.setattr(parity, "IMPORTED_ADAPTER_SHA256", hashlib.sha256(original).hexdigest())
+
+    def measure(*args):
+        assert when == "during measurement"
+        source.write_bytes(b"changed adapter")
+        return {"rows": {}}
+
+    monkeypatch.setattr(parity, "measure", measure)
+    if when == "before capture":
+        source.write_bytes(b"changed adapter")
+    args = Namespace(output=tmp_path / "capture.json", adapter="test")
+    with pytest.raises(ValueError, match="adapter source changed"):
+        parity.capture(args, [], None)
+    assert not args.output.exists()

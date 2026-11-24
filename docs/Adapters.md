@@ -54,6 +54,9 @@ The migration targets Transformers 5.24.1. Both model loaders pass
 `trust_remote_code=False`. They explicitly request PyTorch's default
 floating-point dtype to preserve the v4 loading behavior. Response-cache
 keys include the Transformers version so that a v5 run computes fresh scores.
+The comparison script captures each checkpoint on both arms of the public
+abstention cases and checks the scores and verdicts against v4.
+[Run a checkpoint comparison](../scripts/hf_score_parity.py)
 
 | Affected path in v4 | Peira's use |
 |---|---|
@@ -147,7 +150,8 @@ to the `abstain` primitive; No maps to `other`. Requires
 under AI2's Responsible Use Guidelines (no manual approval needed).
 Apache-2.0.
 
-**HarmBench** is the cais Llama-2-13b classifier used as the
+**HarmBench** needs `sentencepiece` and `protobuf` to load its pinned
+tokenizer. It is the cais Llama-2-13b classifier used as the
 attack-success-rate judge across jailbreak papers. Peira uses the
 same judge with a repurposed mapping, not the (behavior,
 model-generation) pairs the published numbers use. Despite the

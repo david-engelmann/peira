@@ -31,6 +31,7 @@ from peira.adapters.base import CallContext, validate_output
 from peira.dataset import verify_manifest_sealed
 from peira.runner import load_cases
 
+IMPORTED_ADAPTER_SHA256 = hashlib.sha256(Path(hf.__file__).read_bytes()).hexdigest()
 ROOT = Path(__file__).resolve().parents[1]
 ADAPTERS = {cls.name: cls for cls in (getattr(hf, name) for name in hf.__all__)}
 BASELINE_COMMIT = "7b7857b9039575cf45915f29e6fc9502a2f0f218"
@@ -81,13 +82,11 @@ def cpu_model():
     return platform.processor()
 
 
-def capture(args, inputs, manifest):
+def measure(args, inputs, manifest):
     # cuBLAS needs a deterministic workspace before CUDA is initialized.
     os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     import torch
 
-    if args.output.exists():
-        raise ValueError(f"capture already exists: {args.output}")
     cpu = cpu_model()
     if not cpu:
         raise ValueError("cannot identify CPU model on this host")
@@ -113,12 +112,11 @@ def capture(args, inputs, manifest):
     parameters = sorted({(str(p.device), str(p.dtype)) for p in model.parameters()})
     if not parameters:
         raise ValueError("model has no loaded parameters")
-    record = {
+    return {
         "adapter": args.adapter, "model": adapter.HF_MODEL_ID, "revision": adapter.HF_REVISION,
         "corpus": args.corpus, "manifest": manifest, "inputs_sha256": digest(inputs),
         "transformers": version("transformers"), "tokenizers": version("tokenizers"),
         "huggingface_hub": version("huggingface-hub"), "torch_distribution": version("torch"),
-        "adapter_source_sha256": hashlib.sha256(Path(hf.__file__).read_bytes()).hexdigest(),
         "execution": {"python": platform.python_version(), "platform": platform.platform(),
                       "torch": torch.__version__, "threads": args.threads, "seed": 0, "cpu": cpu,
                       "parameters": parameters, "cuda": torch.version.cuda,
@@ -126,11 +124,25 @@ def capture(args, inputs, manifest):
                       "gpu": [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]},
         "rows": rows,
     }
+
+
+def capture(args, inputs, manifest):
+    if args.output.exists():
+        raise ValueError(f"capture already exists: {args.output}")
+    source_file = Path(hf.__file__)
+    source = source_file.read_bytes()
+    source_hash = hashlib.sha256(source).hexdigest()
+    if source_hash != IMPORTED_ADAPTER_SHA256:
+        raise ValueError("adapter source changed after import; restart capture")
+    record = measure(args, inputs, manifest)
+    record["adapter_source_sha256"] = source_hash
     encoded = json.dumps(record, sort_keys=True, allow_nan=False) + "\n"
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    if source_file.read_bytes() != source:
+        raise ValueError("adapter source changed during measurement; restart capture")
     with args.output.open("x", encoding="utf-8") as f:
         f.write(encoded)
-    print(f"Captured {len(rows)} decisions from {args.adapter} in {args.output}")
+    print(f"Captured {len(inputs)} decisions from {args.adapter} in {args.output}")
 
 
 def baseline_file(path):
