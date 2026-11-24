@@ -187,5 +187,5 @@ The A6 smoke instance is planned, not yet executed. It covers the four
 adapters above. The Lakera adapter was verified separately on
 2026-09-30 and is not part of this smoke. HF gated-license acceptance
 for Prompt Guard 2 and ShieldGemma is a license click plus
-`huggingface-cli login`, not a paid call, and is tracked alongside this
+`hf auth login`, not a paid call, and is tracked alongside this
 smoke. Per-adapter outcomes get recorded here only after execution.

@@ -23,16 +23,10 @@ classifiers = [
 
 [project.optional-dependencies]
 # Optional: Hugging Face guardrail adapters (python/peira/adapters/hf.py).
-# transformers is capped below v5: the v5 major (Jan 2026) removed the
-# TF/JAX backends, refactored dynamic weight loading and tokenization,
-# shipped new typer-based CLIs, and dropped legacy env vars (the hub
-# client moved from requests to httpx in huggingface_hub v1.0), and the
-# adapters are unverified against it. Lift the cap only after verifying
-# the pinned revisions load and score identically under v5.
-# Patched filelock releases for the Hugging Face dependency chain need Python 3.11.
+# Transformers v5 and patched filelock releases require Python 3.11 here.
 hf = [
-  "transformers>=4.40,<5; python_version >= '3.11'",
-  "torch>=2.2; python_version >= '3.11'",
+  "transformers>=5.24.1,<6; python_version >= '3.11'",
+  "torch>=2.6; python_version >= '3.11'",
   "filelock>=4.2.1; python_version >= '3.11'",
 ]
 # Optional: structured-output LLM baseline adapters

@@ -6,7 +6,7 @@ indexes the load-bearing claims; detail lives in the linked docs.
 ## We claim
 
 - The optional Hugging Face adapters run inference with pinned default checkpoints. SDK callers can override the model and revision. Both loader implementations pass `trust_remote_code=False`. [Adapter implementation](../python/peira/adapters/hf.py), [adapter tests](../tests/test_hf_adapters.py)
-- The adapters use model-loading paths covered by two Transformers advisories. Training checkpoint restoration, LightGlue matching and tokenizer export are outside their inference flow. [Adapter implementation](../python/peira/adapters/hf.py), [advisories and migration evidence](Adapters.md#transformers-security-and-v5-compatibility)
+- The v4 model loaders used by the adapters were affected by two Transformers advisories. Training checkpoint restoration, LightGlue matching and tokenizer export are outside their inference flow. [Adapter implementation](../python/peira/adapters/hf.py), [advisories and migration evidence](Adapters.md#transformers-security-and-v5-compatibility)
 
 - The board compares measured runs by model role, decision interface, inference location, weight access and benchmark baseline cohort. The two GPT-6 Luna runs can be inspected side by side. [Model profile evidence](../site/board/MODEL-PROFILES.md), [OpenAI Decisions adapter](Adapters.md#openai-decisions)
 - The full-suite ranking and the guard ranking use different sets of cases. Each guard result reports its abstention-subset basis. [Ranking rules](Admission-Rules.md), [Board comparison method](Analytics-Methodology.md#comparing-model-groups)
