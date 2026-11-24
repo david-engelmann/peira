@@ -28,14 +28,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /peira
 
 # Rust toolchain for maturin's PEP 517 build of peira._core. Pinned by
-# rust-toolchain.toml (1.98.1); the minimal profile keeps the layer small.
+# rust-toolchain.toml. Install its channel before maturin queries Cargo.
 # build-essential provides the C linker (cc) that rustc needs.
+COPY rust-toolchain.toml ./
+ENV PATH="/root/.cargo/bin:${PATH}"
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl ca-certificates build-essential && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-      sh -s -- -y --profile minimal && \
+      sh -s -- -y --default-toolchain none && \
+    rustup toolchain install --profile minimal && \
     rm -rf /var/lib/apt/lists/*
-ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install the pinned third-party dependencies first. This layer only
 # rebuilds when the lockfile changes, not on every code edit.
@@ -68,7 +70,7 @@ RUN if [ "$EXTRAS" = "all" ]; then \
 # in place (needs the crates/ tree and the Cargo manifests, copied
 # below). The extension suffix is computed by maturin, not hardcoded, so
 # the Dockerfile survives Python upgrades.
-COPY pyproject.toml README.md Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY pyproject.toml README.md Cargo.toml Cargo.lock ./
 COPY python/ python/
 COPY crates/ crates/
 RUN pip install -e . --no-deps && \
