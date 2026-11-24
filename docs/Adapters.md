@@ -65,12 +65,19 @@ base install runs without it. The current lock resolves Transformers
 | [GHSA-xrqw-3rrv-vx5w](https://github.com/advisories/GHSA-xrqw-3rrv-vx5w) | The affected path writes chat templates when a tokenizer or processor is exported with `save_pretrained`. The adapters load and use tokenizers for inference. |
 | [GHSA-x9r9-c232-4q39](https://github.com/advisories/GHSA-x9r9-c232-4q39) | In v4.57.6, loading a generative checkpoint can fetch and cache custom generation code before checking trust, even when the adapter sets `trust_remote_code=False`. The Hub file listings for the built-in revisions lack custom generation modules, but SDK overrides can load other repositories. Migration should include the [upstream trust-check fix](https://github.com/huggingface/transformers/pull/48620), present in v5.17.0. |
 
+Dismiss the Trainer, LightGlue and export alerts as unused by these adapters.
+Keep both model-loading alerts open until the v5 migration has been verified.
+
 Before raising the v4 cap, verify that the pinned checkpoints still
 load and produce equivalent verdicts and scores. Test chat templates,
 label token IDs, generation, and forward-pass logits against the v4
 results. The v5 release changed model loading and tokenizer behavior,
 and the move to Hugging Face Hub v1 changes HTTP and authentication
-behavior. Verify the selected v5 releases on the supported Python
+behavior. Hub v1 removes the `huggingface-cli login` command in Peira's
+gated-model error message. Use `hf auth login` and test gated downloads
+and retry handling. [Hub v1 migration guide](https://huggingface.co/docs/huggingface_hub/en/concepts/migration)
+
+Verify the selected v5 releases on the supported Python
 versions. [Transformers 5.17.0](https://pypi.org/project/transformers/5.17.0/)
 supports Python 3.10, while
 [Transformers 5.24.0](https://pypi.org/project/transformers/5.24.0/)
@@ -78,9 +85,9 @@ requires Python 3.11 or later. See the
 [Transformers v5 release notes](https://github.com/huggingface/transformers/releases/tag/v5.0.0).
 
 The locked `hf` extra uses `filelock` 4.3.1 on Python 3.11 and later.
-It uses 4.1.0 on Python 3.10, the latest compatible release. The
-remaining `filelock` advisories affecting 4.1.0 are addressed starting
-in 4.2.1, which requires Python 3.11 or later. For patched `filelock`
+The Python 3.10 lock still uses 4.0.8. Even the last compatible
+release, 4.1.0, has an open high-severity advisory. The full set of
+fixes requires filelock 4.2.1 or later and Python 3.11 or later. For patched `filelock`
 on a locked Hugging Face install, use Python 3.11 or later.
 [Filelock 4.1.0](https://pypi.org/project/filelock/4.1.0/)
 [Filelock 4.2.1](https://pypi.org/project/filelock/4.2.1/)
