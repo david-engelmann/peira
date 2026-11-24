@@ -65,6 +65,10 @@ class _FakeTensor:
 
 class _FakeTorch:
     @staticmethod
+    def get_default_dtype():
+        return "float32"
+
+    @staticmethod
     def no_grad():
         return contextlib.nullcontext()
 
@@ -474,7 +478,8 @@ class TestShieldstralLoader(unittest.TestCase):
         class _LoadedModel:
             @classmethod
             def from_pretrained(cls, model_id, revision=None,
-                                trust_remote_code=False):
+                                trust_remote_code=False, dtype=None):
+                loaded["dtype"] = dtype
                 loaded["model_id"] = model_id
                 loaded["revision"] = revision
                 return cls()
@@ -503,6 +508,7 @@ class TestShieldstralLoader(unittest.TestCase):
             adapter = ShieldstralAdapter()
             tokenizer, model = adapter._load()
         self.assertIsInstance(model, _LoadedModel)
+        self.assertEqual(loaded["dtype"], "float32")
         self.assertEqual(loaded["model_id"],
                          "mistralai/Shieldstral-1.0-3B")
         self.assertEqual(
@@ -1710,12 +1716,26 @@ class TestLoadErrors(unittest.TestCase):
         adapter._load = lambda: (_ for _ in ()).throw(exc)
         return adapter
 
+    def test_wrapped_hub_errors_keep_status_and_retry_guidance(self):
+        for status in (403, 429, 503):
+            with self.subTest(status=status):
+                wrapped = OSError("checkpoint unavailable")
+                wrapped.__cause__ = _HubError(status, retry_after=9)
+                adapter = self._adapter_with_load_error(wrapped)
+                with self.assertRaises(ProviderError) as failure:
+                    adapter._ensure_loaded()
+                self.assertEqual(failure.exception.status_code, status)
+                if status == 403:
+                    self.assertIn("hf auth login", str(failure.exception))
+                else:
+                    self.assertEqual(failure.exception.retry_after, 9)
+
     def test_gated_model_auth_error_is_actionable(self):
         adapter = self._adapter_with_load_error(_HubError(403))
         with self.assertRaises(ProviderError) as ctx:
             adapter.decide(_choice_input(), "abstain", _ctx())
         message = str(ctx.exception)
-        self.assertIn("huggingface-cli login", message)
+        self.assertIn("hf auth login", message)
         self.assertIn("meta-llama/Llama-Prompt-Guard-2-86M", message)
         self.assertEqual(ctx.exception.status_code, 403)
         # 403 is permanent: the runner must not retry it.

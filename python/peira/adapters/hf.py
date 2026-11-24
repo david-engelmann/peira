@@ -45,7 +45,7 @@ Retry layering: adapters never retry internally (see base.py). Load-time
 Hugging Face Hub failures are translated to ``ProviderError``: 429/5xx
 carry ``status_code``/``retry_after`` so the runner retries them;
 401/403 (gated models) carry an actionable message telling the user to
-accept the license and run ``huggingface-cli login``.
+accept the license and run ``hf auth login``.
 """
 
 from __future__ import annotations
@@ -261,6 +261,7 @@ class _HFAdapterBase:
         # to namespace the runner's opt-in response cache on it.
         self.cache_namespace = (
             f"{self.name}:{self.hf_model_id}@{self.hf_revision}"
+            f":transformers-{getattr(transformers, '__version__', 'unknown')}"
         )
 
     @property
@@ -285,9 +286,11 @@ class _HFAdapterBase:
             self.hf_model_id, revision=self.hf_revision,
             trust_remote_code=False,
         )
+        # v4 loaded floating weights in the current PyTorch default dtype.
+        # v5 otherwise infers a dtype from each checkpoint.
         model = self._model_class(transformers).from_pretrained(
             self.hf_model_id, revision=self.hf_revision,
-            trust_remote_code=False,
+            dtype=self._torch.get_default_dtype(), trust_remote_code=False,
         )
         model.eval()
         return tokenizer, model
@@ -299,14 +302,22 @@ class _HFAdapterBase:
         except ProviderError:
             raise
         except Exception as exc:
-            status = _response_status(exc)
-            if _is_auth_error(exc, status):
+            # Transformers wraps Hub HTTP errors in OSError when resolving files.
+            cause = exc
+            seen = set()
+            while _response_status(cause) is None and not _is_auth_error(cause, None):
+                if cause.__cause__ is None or id(cause) in seen:
+                    break
+                seen.add(id(cause))
+                cause = cause.__cause__
+            status = _response_status(cause)
+            if _is_auth_error(cause, status):
                 raise ProviderError(
                     f"Cannot download gated model '{self.hf_model_id}' "
                     f"(HTTP {status if status is not None else 'auth error'}). "
                     "Accept the model license on its Hugging Face page "
                     "(one-click on the model repo), then authenticate "
-                    "locally with `huggingface-cli login` and retry.",
+                    "locally with `hf auth login` and retry.",
                     status_code=status,
                 ) from exc
             if status == 429 or (
@@ -316,7 +327,7 @@ class _HFAdapterBase:
                     f"Transient Hugging Face Hub error (HTTP {status}) "
                     f"while loading '{self.hf_model_id}' — safe to retry.",
                     status_code=status,
-                    retry_after=_retry_after_seconds(exc),
+                    retry_after=_retry_after_seconds(cause),
                 ) from exc
             raise
 
@@ -542,7 +553,7 @@ class LlamaPromptGuard2Adapter(_ClassifierBase):
     Gated-model caveat: this repo is distributed under the Meta Llama 4
     Community License and is gated on Hugging Face. Before the first
     download you must accept the license on the model's HF page
-    (one-click) and authenticate locally with ``huggingface-cli login``.
+    (one-click) and authenticate locally with ``hf auth login``.
     Without that, loading raises an auth error whose message says so.
 
     HF repo ``meta-llama/Llama-Prompt-Guard-2-86M`` at the pinned
@@ -1054,7 +1065,7 @@ class WildGuardAdapter(_HFAdapterBase):
     Gated-model caveat: this repo is **gated** (auto-gated on Hugging
     Face). Before the first download you must accept the AI2
     Responsible Use Guidelines on the model's HF page and authenticate
-    locally with ``huggingface-cli login``. Without that, loading
+    locally with ``hf auth login``. Without that, loading
     raises an auth error whose message says so. Real tokenization could
     not be verified in review (no HF auth in the test environment) —
     the prompt format below is adapted from the published official
@@ -1738,7 +1749,7 @@ class LlamaGuard4Adapter(_HFAdapterBase):
 
     Gated-model caveat: this repo is **gated** — accept the
     license on the model's HF page and authenticate locally
-    with ``huggingface-cli login`` before the first download
+    with ``hf auth login`` before the first download
     (gate passes on the trial account, verified 2026-10-15).
 
     HF repo ``meta-llama/Llama-Guard-4-12B`` (Llama 4 Community
@@ -1901,9 +1912,11 @@ class GptOssSafeguardAdapter(_HFAdapterBase):
         kwargs: dict[str, Any] = {}
         if self._torch.cuda.is_available():
             kwargs["device_map"] = "cuda"
+        # v4 loaded floating weights in the current PyTorch default dtype.
+        # v5 otherwise infers a dtype from each checkpoint.
         model = self._model_class(transformers).from_pretrained(
             self.hf_model_id, revision=self.hf_revision,
-            trust_remote_code=False, **kwargs,
+            dtype=self._torch.get_default_dtype(), trust_remote_code=False, **kwargs,
         )
         model.eval()
         return tokenizer, model

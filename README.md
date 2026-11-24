@@ -145,7 +145,7 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 Install an extra from the cloned checkout when your adapter needs one.
 
 ```bash
-pip install -e ".[hf]"        # Hugging Face guard models (Python 3.11+)
+pip install -e ".[hf]"        # Hugging Face guard models (Python 3.11+, Transformers v5)
 pip install -e ".[openai]"    # OpenAI structured-output baseline
 pip install -e ".[anthropic]" # Anthropic structured-output baseline
 pip install -e ".[google]"    # Gemini structured-output baseline

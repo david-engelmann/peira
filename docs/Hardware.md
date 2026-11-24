@@ -19,7 +19,7 @@ the result through the standard HF adapter.
 - **Sub-1B class**: ProtectAI (`protectai/deberta-v3-base-prompt-injection-v2`,
   DeBERTa-v3-base), Llama Prompt Guard 2 86M
   (`meta-llama/Llama-Prompt-Guard-2-86M`; gated, accept the license and
-  run `huggingface-cli login` before first use).
+  run `hf auth login` before first use).
 
 - **Hosted adapters** (LLM baselines, TypeSafe Jev): no local
   requirements beyond Python. You pay your provider per decision

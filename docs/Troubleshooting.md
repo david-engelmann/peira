@@ -53,7 +53,7 @@ benchmarking seriously.
 **Hugging Face auth / rate-limit errors** (`peira[hf]` adapters)
 Cause: `peira[hf]` adapters download models from HF Hub. Gated models
 (Llama Prompt Guard 2) additionally require a license click-through.
-Fix: `huggingface-cli login`, or set `HF_TOKEN`; for gated models,
+Fix: `hf auth login`, or set `HF_TOKEN`; for gated models,
 accept the license on the model's HF page first. Model weights are
 cached after the first download. Revisions are pinned. A download
 failure never silently falls back to another revision.
@@ -729,7 +729,7 @@ commit hash.
 
 **`Cannot download gated model '...' (HTTP ...). Accept the model license on its Hugging Face page ...`**
 Cause: Llama Prompt Guard 2 is gated. You haven't accepted the Meta
-Llama 4 Community License on the model's HF page, or `huggingface-cli
+Llama 4 Community License on the model's HF page, or `hf auth
 login` / `HF_TOKEN` isn't set. Fix: accept the license (one click on
 the model repo), then authenticate locally. The download is a one-time
 cost; weights are cached afterwards.

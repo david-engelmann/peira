@@ -23,14 +23,14 @@ can run. Fix whatever it flags, then come back here.
 ## Local Hugging Face guardrails
 
 The guardrail adapters run open models locally through transformers.
-One install covers all seven.
+Install the Hugging Face extra in a Python 3.11 or later environment.
 
 ```bash
 pip install "peira[hf]"
 ```
 
-This pulls torch and transformers. Transformers stays pinned below v5
-until the adapters are verified against it. Models download from the
+This installs PyTorch and Transformers v5 on Python 3.11 or later.
+Models download from the
 Hugging Face Hub on first use and are cached locally, so the first run
 needs network access and disk space while later runs are fully offline.
 Every model is pinned to an exact commit revision, never main, so the
@@ -59,7 +59,7 @@ Gated models need one manual step each. For Llama Prompt Guard 2,
 accept the license on its Hugging Face page, then authenticate.
 
 ```bash
-huggingface-cli login
+hf auth login
 peira run --adapter peira.adapters.hf:LlamaPromptGuard2Adapter --suite trial-demo --out /tmp/lpg2
 ```
 
