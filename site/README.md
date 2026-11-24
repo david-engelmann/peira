@@ -6,6 +6,9 @@ it renders today is synthetic mock data, and every mock surface says so.
 
 ## Develop
 
+Use Node.js 24.15.0 or later in the 24.x series to match CI. Node.js
+22.23.4 or later in the 22.x series also supports the build and tests.
+
 ```bash
 npm install
 npm run ingest-mock   # artifacts -> src/data/results.json (mock)
